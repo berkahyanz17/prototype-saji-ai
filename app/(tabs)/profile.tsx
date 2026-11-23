@@ -3,10 +3,9 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge } from '../../lib/FridgeContext';
+import { Avatar } from '../../lib/avatars';
+import { formatMass, wasteRate } from '../../lib/impact';
 import { budgetLabel, equipmentLabel, reminderLabel, timeLabel } from '../../lib/prefs';
-
-const USER_NAME = 'User'; // change to your name
-const USER_EMAIL = 'user@email.com'; // change to your email
 
 const HELP = [
   { label: 'Pusat Bantuan', page: 'help' },
@@ -19,24 +18,25 @@ const soon = () => Alert.alert('Segera hadir');
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { fridge, favorites, cookedDays, usedCount, cookedRecipeIds, prefs } = useFridge();
+  const { favorites, cookedDays, usedCount, cookedRecipeIds, prefs, impact, profile } =
+    useFridge();
 
   const streak = cookedDays.filter(Boolean).length;
-  const spoiled = fridge.filter((i) => i.expiresAt < Date.now()).length;
+  const rate = wasteRate(impact);
 
   const stats = [
     { icon: 'leaf-outline', value: usedCount, label: 'Bahan terpakai' },
     { icon: 'restaurant-outline', value: cookedRecipeIds.length, label: 'Resep dicoba' },
-    { icon: 'trash-outline', value: spoiled, label: 'Bahan basi' },
+    { icon: 'trash-outline', value: impact.wastedItems, label: 'Bahan terbuang' },
   ] as const;
 
   const prefRows = [
-    { label: 'Preferensi makanan', value: prefs.cuisine },
-    { label: 'Batas Waktu Masak', value: timeLabel(prefs.maxMinutes) },
-    { label: 'Anggaran per Porsi', value: budgetLabel(prefs.budget) },
-    { label: 'Peralatan memasak', value: equipmentLabel(prefs.equipment) },
-    { label: 'Pengingat kedaluwarsa', value: reminderLabel(prefs) },
-  ];
+    { label: 'Preferensi makanan', value: prefs.cuisine, to: '/preferences' },
+    { label: 'Batas Waktu Masak', value: timeLabel(prefs.maxMinutes), to: '/preferences' },
+    { label: 'Anggaran per Porsi', value: budgetLabel(prefs.budget), to: '/preferences' },
+    { label: 'Peralatan memasak', value: equipmentLabel(prefs.equipment), to: '/preferences' },
+    { label: 'Pengingat kedaluwarsa', value: reminderLabel(prefs), to: '/settings' },
+  ] as const;
 
   return (
     <ScrollView
@@ -50,18 +50,15 @@ export default function ProfileScreen() {
       <View style={styles.headerRow}>
         <View style={styles.headerSide} />
         <Text style={styles.title}>Profil</Text>
-        <Pressable style={styles.headerSide} onPress={soon} hitSlop={10}>
+        <Pressable style={styles.headerSide} onPress={() => router.push('/settings')} hitSlop={10}>
           <Ionicons name="settings-outline" size={24} color="#462b0e" />
         </Pressable>
       </View>
 
-      <Pressable style={styles.profileCard} onPress={soon}>
-        <View style={styles.avatar}>
-          <Ionicons name="person-outline" size={44} color="#8a7560" />
-        </View>
+      <Pressable style={styles.profileCard} onPress={() => router.push('/edit-profile')}>
+        <Avatar id={profile.avatar} size={84} />
         <View style={styles.profileInfo}>
-          <Text style={styles.name}>{USER_NAME}</Text>
-          <Text style={styles.email}>{USER_EMAIL}</Text>
+          <Text style={styles.name}>{profile.name}</Text>
           <View style={styles.pills}>
             <View style={styles.pill}>
               <Text style={styles.pillText}>Streak {streak} hari</Text>
@@ -89,6 +86,31 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
 
+      <Text style={styles.section}>Dampak kamu</Text>
+      <Pressable style={styles.impactCard} onPress={() => router.push('/impact')}>
+        <View style={styles.impactTop}>
+          <View>
+            <Text style={styles.impactNumber}>{formatMass(impact.usedGrams)}</Text>
+            <Text style={styles.impactLabel}>bahan dimanfaatkan</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#2c311e" />
+        </View>
+        <View style={styles.impactRow}>
+          <View style={styles.impactCell}>
+            <Text style={styles.impactCellValue}>{formatMass(impact.rescuedGrams)}</Text>
+            <Text style={styles.impactCellLabel}>hampir kedaluwarsa</Text>
+          </View>
+          <View style={styles.impactCell}>
+            <Text style={styles.impactCellValue}>{formatMass(impact.wastedGrams)}</Text>
+            <Text style={styles.impactCellLabel}>terbuang</Text>
+          </View>
+          <View style={styles.impactCell}>
+            <Text style={styles.impactCellValue}>{rate === null ? '–' : `${rate}%`}</Text>
+            <Text style={styles.impactCellLabel}>waste rate</Text>
+          </View>
+        </View>
+      </Pressable>
+
       <Text style={styles.section}>Ringkasan aktivitas</Text>
       <View style={styles.statsRow}>
         {stats.map((s) => (
@@ -104,11 +126,7 @@ export default function ProfileScreen() {
 
       <Text style={styles.section}>Pengaturan preferensi</Text>
       {prefRows.map((p) => (
-        <Pressable
-          key={p.label}
-          style={styles.listRow}
-          onPress={() => router.push('/preferences')}
-        >
+        <Pressable key={p.label} style={styles.listRow} onPress={() => router.push(p.to)}>
           <Text style={styles.listLabel}>{p.label}</Text>
           <Text style={styles.listValue} numberOfLines={1}>
             {p.value}
@@ -151,17 +169,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
   },
-  avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 24,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   profileInfo: { flex: 1, marginLeft: 12 },
-  name: { fontSize: 18, fontWeight: '700', color: '#2c311e' },
-  email: { fontSize: 12, color: '#2c311e', marginBottom: 8 },
+  name: { fontSize: 20, fontWeight: '700', color: '#2c311e', marginBottom: 8 },
   pills: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   pill: {
     backgroundColor: '#ffffffaa',
@@ -189,6 +198,25 @@ const styles = StyleSheet.create({
   },
   shortcutLabel: { fontSize: 11, color: '#2c311e', marginTop: 4 },
   section: { fontSize: 17, fontWeight: '700', color: '#462b0e', marginTop: 6, marginBottom: 10 },
+  impactCard: {
+    backgroundColor: '#abe4c2',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  impactTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  impactNumber: { fontSize: 34, fontWeight: '700', color: '#0c361d' },
+  impactLabel: { fontSize: 13, color: '#0c351d' },
+  impactRow: { flexDirection: 'row', marginTop: 12, gap: 8 },
+  impactCell: {
+    flex: 1,
+    backgroundColor: '#ffffff66',
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  impactCellValue: { fontSize: 15, fontWeight: '700', color: '#0c361d' },
+  impactCellLabel: { fontSize: 10, color: '#0c351d', marginTop: 2 },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   stat: {
     flex: 1,

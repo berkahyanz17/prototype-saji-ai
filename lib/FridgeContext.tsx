@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { AVATARS, DEFAULT_AVATAR } from './avatars';
 import {
   DAY_MS,
   defaultLocation,
@@ -7,9 +8,11 @@ import {
   type Category,
   type Location,
 } from './foodInfo';
+import { newImpact, sanitizeImpact, type Impact } from './impact';
 import {
   convertQty,
   findIngredient,
+  gramsPer,
   ingredientById,
   normalizeUnit,
   shelfDaysFor,
@@ -46,6 +49,19 @@ export type MergeChange = { name: string; before?: number; after?: number; unit?
 export type AddOutcome = { added: string[]; merged: MergeChange[] };
 export type AddResult = 'added' | 'merged' | 'unchanged';
 
+export type UserProfile = { name: string; avatar: string };
+
+const DEFAULT_PROFILE: UserProfile = { name: 'Teman', avatar: DEFAULT_AVATAR };
+
+function sanitizeProfile(raw: unknown): UserProfile {
+  const p = (raw && typeof raw === 'object' ? raw : {}) as Partial<UserProfile>;
+  const name = typeof p.name === 'string' ? p.name.trim().slice(0, 24) : '';
+  return {
+    name: name || DEFAULT_PROFILE.name,
+    avatar: AVATARS.some((a) => a.id === p.avatar) ? (p.avatar as string) : DEFAULT_AVATAR,
+  };
+}
+
 // Monday = 0 ... Sunday = 6
 export const todayIndex = () => (new Date().getDay() + 6) % 7;
 
@@ -56,6 +72,14 @@ const weekKey = () => {
   const d = new Date();
   d.setDate(d.getDate() - todayIndex());
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
+// Grams in an amount of an ingredient, or null if the unit can't be converted
+const gramsOf = (qty: number | undefined, unit: string | undefined, ingredientId?: string) => {
+  if (qty === undefined || !unit) return null;
+  const db = ingredientId ? ingredientById(ingredientId) : undefined;
+  const per = gramsPer(db, unit);
+  return per === null ? null : qty * per;
 };
 
 // Cleans up items saved by older versions: normal units, ingredient link, starting quantity
@@ -145,6 +169,11 @@ type AppState = {
   recipes: Recipe[]; // AI recipes first, then the built-in ones
   prefs: Prefs;
   setPrefs: (prefs: Prefs) => void;
+  impact: Impact;
+  resetImpact: () => void;
+  profile: UserProfile;
+  setProfile: (profile: UserProfile) => void;
+  resetAll: () => void;
 };
 
 const AppContext = createContext<AppState | null>(null);
@@ -157,6 +186,8 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
   const [usedCount, setUsedCount] = useState(0);
   const [cookedRecipeIds, setCookedRecipeIds] = useState<string[]>([]);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
+  const [impact, setImpact] = useState<Impact>(newImpact);
+  const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [cookedDays, setCookedDays] = useState<boolean[]>(
     new Array<boolean>(7).fill(false)
   );
@@ -174,6 +205,8 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
           if (typeof saved.usedCount === 'number') setUsedCount(saved.usedCount);
           if (Array.isArray(saved.cookedRecipeIds)) setCookedRecipeIds(saved.cookedRecipeIds);
           if (saved.prefs) setPrefs(sanitizePrefs(saved.prefs));
+          if (saved.impact) setImpact(sanitizeImpact(saved.impact));
+          if (saved.profile) setProfile(sanitizeProfile(saved.profile));
           if (
             saved.weekKey === weekKey() &&
             Array.isArray(saved.cookedDays) &&
@@ -202,10 +235,23 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
         usedCount,
         cookedRecipeIds,
         prefs,
+        impact,
+        profile,
         weekKey: weekKey(),
       })
     ).catch(() => {});
-  }, [loaded, fridge, favorites, cookedDays, aiRecipes, usedCount, cookedRecipeIds, prefs]);
+  }, [
+    loaded,
+    fridge,
+    favorites,
+    cookedDays,
+    aiRecipes,
+    usedCount,
+    cookedRecipeIds,
+    prefs,
+    impact,
+    profile,
+  ]);
 
   // Adds scanned ingredients. Existing ones are merged: a counted amount (e.g. 3 eggs
   // visible in the photo) is added to the stock; an uncounted one leaves the stock as is.
@@ -329,8 +375,19 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
       })
     );
 
-  const removeFromFridge = (id: string) =>
+  // Removing an item that already expired counts as food thrown away
+  const removeFromFridge = (id: string) => {
+    const item = fridge.find((i) => i.id === id);
+    if (item && item.expiresAt < Date.now()) {
+      const grams = gramsOf(item.quantity, item.unit, item.ingredientId) ?? 0;
+      setImpact((prev) => ({
+        ...prev,
+        wastedItems: prev.wastedItems + 1,
+        wastedGrams: prev.wastedGrams + grams,
+      }));
+    }
     setFridge((prev) => prev.filter((i) => i.id !== id));
+  };
 
   const clearFridge = () => setFridge([]);
 
@@ -342,8 +399,34 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
   const toggleCookedDay = (index: number) =>
     setCookedDays((prev) => prev.map((v, i) => (i === index ? !v : v)));
 
-  // Applies the stock changes, marks today in the streak, counts the recipe
+  // Applies the stock changes, records the impact, marks today in the streak
   const cookRecipe = (recipeId: string, changes: StockChange[]) => {
+    const now = Date.now();
+    let usedGrams = 0;
+    let rescuedGrams = 0;
+    let rescuedItems = 0;
+
+    changes.forEach((c) => {
+      const item = fridge.find((i) => i.id === c.id);
+      if (!item) return;
+      const before = c.before ?? item.quantity;
+      const usedQty = before !== undefined ? before - (c.after ?? 0) : undefined;
+      const grams = gramsOf(usedQty, c.unit ?? item.unit, item.ingredientId) ?? 0;
+      usedGrams += grams;
+      if (item.expiresAt - now <= 2 * DAY_MS) {
+        rescuedGrams += grams;
+        rescuedItems += 1;
+      }
+    });
+
+    setImpact((prev) => ({
+      ...prev,
+      cookCount: prev.cookCount + 1,
+      usedGrams: prev.usedGrams + usedGrams,
+      rescuedGrams: prev.rescuedGrams + rescuedGrams,
+      rescuedItems: prev.rescuedItems + rescuedItems,
+    }));
+
     if (changes.length > 0) {
       setFridge((prev) =>
         prev.flatMap((i) => {
@@ -357,6 +440,20 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
     }
     setCookedRecipeIds((prev) => (prev.includes(recipeId) ? prev : [...prev, recipeId]));
     setCookedDays((prev) => prev.map((v, i) => (i === todayIndex() ? true : v)));
+  };
+
+  const resetImpact = () => setImpact(newImpact());
+
+  const resetAll = () => {
+    setFridge([]);
+    setFavorites([]);
+    setAiRecipes([]);
+    setUsedCount(0);
+    setCookedRecipeIds([]);
+    setPrefs(DEFAULT_PREFS);
+    setImpact(newImpact());
+    setProfile(DEFAULT_PROFILE);
+    setCookedDays(new Array<boolean>(7).fill(false));
   };
 
   if (!loaded) return null;
@@ -382,6 +479,11 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
         recipes: [...aiRecipes, ...RECIPES],
         prefs,
         setPrefs,
+        impact,
+        resetImpact,
+        profile,
+        setProfile,
+        resetAll,
       }}
     >
       {children}

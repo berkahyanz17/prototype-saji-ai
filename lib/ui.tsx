@@ -8,7 +8,6 @@ import {
 
 export {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -17,6 +16,8 @@ export {
   Switch,
   View,
 } from 'react-native';
+
+export { Alert } from './AlertHost';
 
 const FAMILIES = {
   400: 'JosefinSans_400Regular',

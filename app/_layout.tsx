@@ -12,6 +12,7 @@ import {
 } from '@expo-google-fonts/josefin-sans';
 import { FridgeProvider } from '../lib/FridgeContext';
 import Reminders from '../lib/Reminders';
+import { AlertHost } from '../lib/AlertHost';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -32,6 +33,7 @@ export default function RootLayout() {
   return (
     <FridgeProvider>
       <Reminders />
+      <AlertHost />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="camera" options={{ animation: 'slide_from_bottom' }} />

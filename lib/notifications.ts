@@ -7,6 +7,14 @@ import type { Prefs } from './prefs';
 const CHANNEL = 'expiry';
 const MAX_SCHEDULED = 50;
 
+export type Reminder = {
+  at: number;
+  when: string;
+  names: string[];
+  title: string;
+  body: string;
+};
+
 export function setupNotifications() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -57,12 +65,9 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const whenText = (days: number) =>
   days <= 0 ? 'hari ini' : days === 1 ? 'besok' : `dalam ${days} hari`;
 
-async function run(fridge: FridgeItem[], prefs: Prefs) {
-  await Notifications.cancelAllScheduledNotificationsAsync();
-  if (!prefs.notify) return;
-
-  const permission = await Notifications.getPermissionsAsync();
-  if (!permission.granted) return;
+// The reminders that should exist for this fridge and these settings
+export function planReminders(fridge: FridgeItem[], prefs: Prefs): Reminder[] {
+  if (!prefs.notify) return [];
 
   const now = Date.now();
   const groups = new Map<string, { at: number; when: string; names: string[] }>();
@@ -95,24 +100,39 @@ async function run(fridge: FridgeItem[], prefs: Prefs) {
     else groups.set(key, { at, when, names: [name] });
   }
 
-  const upcoming = Array.from(groups.values())
+  return Array.from(groups.values())
     .sort((a, b) => a.at - b.at)
-    .slice(0, MAX_SCHEDULED);
-
-  for (const g of upcoming) {
-    const list =
-      g.names.length <= 3
-        ? g.names.join(', ')
-        : `${g.names.slice(0, 3).join(', ')} dan ${g.names.length - 3} lainnya`;
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
+    .slice(0, MAX_SCHEDULED)
+    .map((g) => {
+      const list =
+        g.names.length <= 3
+          ? g.names.join(', ')
+          : `${g.names.slice(0, 3).join(', ')} dan ${g.names.length - 3} lainnya`;
+      return {
+        at: g.at,
+        when: g.when,
+        names: g.names,
         title: 'Olah sebelum basi',
         body: `${list} akan kedaluwarsa ${g.when}. Yuk segera dimasak!`,
-      },
+      };
+    });
+}
+
+async function run(fridge: FridgeItem[], prefs: Prefs) {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+
+  const reminders = planReminders(fridge, prefs);
+  if (reminders.length === 0) return;
+
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) return;
+
+  for (const r of reminders) {
+    await Notifications.scheduleNotificationAsync({
+      content: { title: r.title, body: r.body },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(g.at),
+        date: new Date(r.at),
         channelId: CHANNEL,
       },
     });

@@ -16,16 +16,14 @@ import { DAY_MS, emojiFor } from '../../lib/foodInfo';
 import { rankRecipes } from '../../lib/recipes';
 import RecipeCard from '../../lib/RecipeCard';
 
-const USER_NAME = 'User'; // change to your name
 const DAY_LABELS = ['S', 'S', 'R', 'K', 'J', 'S', 'M'];
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const soon = () => Alert.alert('Segera hadir');
 
 export default function Beranda() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { fridge, cookedDays, toggleCookedDay, recipes } = useFridge();
+  const { fridge, cookedDays, toggleCookedDay, recipes, profile } = useFridge();
   const [search, setSearch] = useState('');
 
   const hour = new Date().getHours();
@@ -64,17 +62,17 @@ export default function Beranda() {
       <View style={styles.headerRow}>
         <Text style={styles.brand}>Saji AI</Text>
         <View style={styles.headerIcons}>
-          <Pressable onPress={soon} hitSlop={8}>
+          <Pressable onPress={() => router.push('/notifications')} hitSlop={8}>
             <Ionicons name="notifications-outline" size={24} color="#462b0d" />
           </Pressable>
-          <Pressable onPress={soon} hitSlop={8}>
+          <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
             <Ionicons name="settings-outline" size={24} color="#462b0d" />
           </Pressable>
         </View>
       </View>
 
       <Text style={styles.greeting}>
-        Selamat {greeting}, {USER_NAME}
+        Selamat {greeting}, {profile.name}
       </Text>
 
       <View style={styles.summaryRow}>
