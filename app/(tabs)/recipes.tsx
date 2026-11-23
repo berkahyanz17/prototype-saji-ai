@@ -80,7 +80,7 @@ export default function RecipesScreen() {
     <View style={styles.container}>
       <View style={[styles.top, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.title}>Resep masakan</Text>
-        <Text style={styles.subtitle}>bahan yang lo punya</Text>
+        <Text style={styles.subtitle}>Inspirasi kunliner andalan mu</Text>
 
         <Pressable
           style={[styles.aiButton, generating && styles.aiDisabled]}

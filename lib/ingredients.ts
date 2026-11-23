@@ -162,6 +162,20 @@ export function gramsPer(db: Ingredient | undefined, unit: string): number | nul
   return null;
 }
 
+// Converts an amount between two units of the same ingredient, or null if impossible
+export function convertQty(
+  db: Ingredient | undefined,
+  qty: number,
+  from: string,
+  to: string
+): number | null {
+  if (from === to) return qty;
+  const f = gramsPer(db, from);
+  const t = gramsPer(db, to);
+  if (f === null || t === null) return null;
+  return (qty * f) / t;
+}
+
 export function shelfDaysFor(
   db: Ingredient | undefined,
   location: Location,

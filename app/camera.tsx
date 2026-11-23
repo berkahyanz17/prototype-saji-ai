@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { analyzePhoto, type ScanResult } from '../lib/api';
 import { useFridge } from '../lib/FridgeContext';
-import { findIngredient } from '../lib/ingredients';
+import { findIngredient, formatQty } from '../lib/ingredients';
 
 const WARNINGS: Record<string, string> = {
   screen: 'Foto ini sepertinya layar atau monitor, bukan bahan asli.',
@@ -84,15 +84,22 @@ export default function CameraScreen() {
       Alert.alert('Belum ada bahan', 'Ambil foto bahan dan pilih minimal satu bahan.');
       return;
     }
-    const added = addToFridge(
+    const outcome = addToFridge(
       selected.map((name) => ({ name, count: result.counts?.[name] }))
     );
-    Alert.alert(
-      'Lemari',
-      added > 0
-        ? `${added} bahan ditambahkan ke lemari.`
-        : 'Bahan ini sudah ada di lemari.'
-    );
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+    const lines: string[] = [];
+    if (outcome.added.length > 0) {
+      lines.push(`Ditambahkan: ${outcome.added.map(cap).join(', ')}`);
+    }
+    outcome.merged.forEach((m) => {
+      lines.push(
+        m.before !== m.after
+          ? `${cap(m.name)}: ${formatQty(m.before)} → ${formatQty(m.after)} ${m.unit ?? ''}`.trim()
+          : `${cap(m.name)}: sudah ada, jumlah tidak berubah`
+      );
+    });
+    Alert.alert('Lemari', lines.join('\n'));
     router.navigate('/fridge');
   };
 

@@ -13,9 +13,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge } from '../lib/FridgeContext';
 import { guessCategory, type Category, type Location } from '../lib/foodInfo';
+import { UNIT_OPTIONS } from '../lib/ingredients';
 
 const CATEGORIES: Category[] = ['Sayur', 'Bumbu', 'Produk susu', 'Protein', 'Karbo', 'Lainnya'];
-const UNITS = ['gram', 'kg', 'ml', 'liter', 'buah', 'butir', 'ikat', 'bungkus', 'sdm'];
+const UNITS = UNIT_OPTIONS;
 const LOCATIONS: { label: string; value: Location }[] = [
   { label: 'Lemari', value: 'rak' },
   { label: 'Kulkas', value: 'kulkas' },
@@ -86,7 +87,7 @@ export default function AddIngredient() {
   const [name, setName] = useState('');
   const [category, setCategory] = useState<Category | null>(null);
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('gram');
+  const [unit, setUnit] = useState('g');
   const [dateText, setDateText] = useState('');
   const [location, setLocation] = useState<Location>('rak');
   const [open, setOpen] = useState<'category' | 'unit' | null>(null);
@@ -120,7 +121,7 @@ export default function AddIngredient() {
       expiresAt = parsed;
     }
 
-    const ok = addItem({
+    const outcome = addItem({
       name: trimmed,
       category: category ?? guessCategory(trimmed),
       location,
@@ -129,8 +130,11 @@ export default function AddIngredient() {
       expiresAt,
     });
 
-    if (!ok) {
-      Alert.alert('Sudah ada', `${trimmed} sudah ada di lemarimu.`);
+    if (outcome === 'unchanged') {
+      Alert.alert(
+        'Sudah ada',
+        `${trimmed} sudah ada di lemarimu. Isi jumlah untuk menambah stok.`
+      );
       return;
     }
     router.back();

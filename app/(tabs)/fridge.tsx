@@ -128,7 +128,7 @@ export default function FridgeScreen() {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.title}>Lemari</Text>
-            <Text style={styles.subtitle}>bahan yang lo punya</Text>
+            <Text style={styles.subtitle}>bahan yang kamu punya</Text>
           </View>
           <Pressable style={styles.addButton} onPress={() => router.push('/add-ingredient')}>
             <Ionicons name="add" size={34} color="#fff" />

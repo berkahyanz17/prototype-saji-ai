@@ -8,9 +8,12 @@ import {
   type Location,
 } from './foodInfo';
 import {
+  convertQty,
   findIngredient,
   ingredientById,
+  normalizeUnit,
   shelfDaysFor,
+  type Ingredient,
   type StockChange,
 } from './ingredients';
 import { DEFAULT_PREFS, sanitizePrefs, type Prefs } from './prefs';
@@ -39,6 +42,10 @@ export type NewItem = {
 
 export type ScannedItem = { name: string; count?: number };
 
+export type MergeChange = { name: string; before?: number; after?: number; unit?: string };
+export type AddOutcome = { added: string[]; merged: MergeChange[] };
+export type AddResult = 'added' | 'merged' | 'unchanged';
+
 // Monday = 0 ... Sunday = 6
 export const todayIndex = () => (new Date().getDay() + 6) % 7;
 
@@ -51,8 +58,9 @@ const weekKey = () => {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 };
 
-// Gives items saved by older versions an ingredient link and a starting quantity
-const migrate = (item: FridgeItem): FridgeItem => {
+// Cleans up items saved by older versions: normal units, ingredient link, starting quantity
+const migrate = (raw: FridgeItem): FridgeItem => {
+  const item = raw.unit ? { ...raw, unit: normalizeUnit(raw.unit) } : raw;
   if (item.ingredientId) return item;
   const db = findIngredient(item.name);
   if (!db) return item;
@@ -65,10 +73,60 @@ const migrate = (item: FridgeItem): FridgeItem => {
   };
 };
 
+// Adds `qty unit` to the matching fridge entry. Returns null when no entry can take it.
+function tryMerge(
+  list: FridgeItem[],
+  match: (i: FridgeItem) => boolean,
+  qty: number | undefined,
+  unit: string | undefined,
+  estimated: boolean,
+  expiresAt: number,
+  db: Ingredient | undefined
+): { list: FridgeItem[]; change: MergeChange } | null {
+  const idx = list.findIndex((i) => {
+    if (!match(i)) return false;
+    if (qty === undefined || !unit) return true; // nothing to add: same item
+    if (i.quantity === undefined || !i.unit) return true; // existing amount unknown
+    return convertQty(db, qty, unit, i.unit) !== null; // units can be converted
+  });
+  if (idx === -1) return null;
+
+  const item = list[idx];
+  let quantity = item.quantity;
+  let itemUnit = item.unit;
+
+  if (qty !== undefined && unit) {
+    if (item.quantity === undefined || !item.unit) {
+      quantity = qty;
+      itemUnit = unit;
+    } else {
+      const converted = convertQty(db, qty, unit, item.unit) ?? 0;
+      quantity = Math.round((item.quantity + converted) * 10) / 10;
+    }
+  }
+
+  const now = Date.now();
+  const merged: FridgeItem = {
+    ...item,
+    quantity,
+    unit: itemUnit,
+    estimated: qty !== undefined ? !!(item.estimated || estimated) : item.estimated,
+    // keep the earliest expiry so reminders aren't missed, unless the old stock already expired
+    expiresAt: item.expiresAt < now ? expiresAt : Math.min(item.expiresAt, expiresAt),
+  };
+
+  const next = [...list];
+  next[idx] = merged;
+  return {
+    list: next,
+    change: { name: item.name, before: item.quantity, after: quantity, unit: itemUnit },
+  };
+}
+
 type AppState = {
   fridge: FridgeItem[];
-  addToFridge: (items: ScannedItem[]) => number;
-  addItem: (item: NewItem) => boolean;
+  addToFridge: (items: ScannedItem[]) => AddOutcome;
+  addItem: (item: NewItem) => AddResult;
   updateItem: (
     id: string,
     patch: { quantity?: number; unit?: string; location?: Location }
@@ -149,14 +207,12 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
     ).catch(() => {});
   }, [loaded, fridge, favorites, cookedDays, aiRecipes, usedCount, cookedRecipeIds, prefs]);
 
-  // Adds scanned ingredients, skips duplicates, returns how many were added
-  const addToFridge = (items: ScannedItem[]) => {
-    const names = new Set(fridge.map((i) => i.name));
-    const ids = new Set(
-      fridge.map((i) => i.ingredientId).filter((x): x is string => !!x)
-    );
+  // Adds scanned ingredients. Existing ones are merged: a counted amount (e.g. 3 eggs
+  // visible in the photo) is added to the stock; an uncounted one leaves the stock as is.
+  const addToFridge = (items: ScannedItem[]): AddOutcome => {
+    const outcome: AddOutcome = { added: [], merged: [] };
+    let working = fridge;
     const now = Date.now();
-    const toAdd: FridgeItem[] = [];
 
     items.forEach((item, index) => {
       const raw = item.name.trim().toLowerCase();
@@ -164,12 +220,9 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
 
       const db = findIngredient(raw);
       const name = db ? db.name : raw;
-      if (names.has(name) || (db && ids.has(db.id))) return;
-      names.add(name);
-      if (db) ids.add(db.id);
-
       const category = db ? db.category : guessCategory(raw);
       const location = db ? db.location : defaultLocation(category);
+      const expiresAt = now + shelfDaysFor(db, location, category) * DAY_MS;
       // A visible count is a real measurement for countable units (butir, buah, ...)
       const counted =
         !!db &&
@@ -178,49 +231,85 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
         db.unit !== 'g' &&
         db.unit !== 'ml';
 
-      toAdd.push({
-        id: `${now}-${index}`,
-        name,
-        ingredientId: db?.id,
-        category,
-        location,
-        expiresAt: now + shelfDaysFor(db, location, category) * DAY_MS,
-        quantity: counted ? item.count : db?.qty,
-        unit: db?.unit,
-        estimated: db ? !counted : undefined,
-      });
+      const merged = tryMerge(
+        working,
+        (i) => i.name === name || (!!db && i.ingredientId === db.id),
+        counted ? item.count : undefined,
+        counted ? db?.unit : undefined,
+        false,
+        expiresAt,
+        db
+      );
+      if (merged) {
+        working = merged.list;
+        outcome.merged.push(merged.change);
+        return;
+      }
+
+      working = [
+        ...working,
+        {
+          id: `${now}-${index}`,
+          name,
+          ingredientId: db?.id,
+          category,
+          location,
+          expiresAt,
+          quantity: counted ? item.count : db?.qty,
+          unit: db?.unit,
+          estimated: db ? !counted : undefined,
+        },
+      ];
+      outcome.added.push(name);
     });
 
-    if (toAdd.length > 0) setFridge((prev) => [...prev, ...toAdd]);
-    return toAdd.length;
+    if (working !== fridge) setFridge(working);
+    return outcome;
   };
 
-  // Adds one ingredient from the manual form. Returns false if it already exists
-  const addItem = (item: NewItem) => {
+  // Adds one ingredient from the manual form. If it already exists and an amount is
+  // given, the amount is added to the stock.
+  const addItem = (item: NewItem): AddResult => {
     const raw = item.name.trim().toLowerCase();
-    if (!raw) return false;
+    if (!raw) return 'unchanged';
+
     const db = findIngredient(raw);
     const name = db ? db.name : raw;
-    if (fridge.some((i) => i.name === name || (db && i.ingredientId === db.id))) return false;
-
     const now = Date.now();
-    const hasQty = item.quantity !== undefined;
-    setFridge((prev) => [
-      ...prev,
+    const hasQty = item.quantity !== undefined && !!item.unit;
+    const unit = hasQty ? normalizeUnit(item.unit as string) : undefined;
+    const expiresAt =
+      item.expiresAt ?? now + shelfDaysFor(db, item.location, item.category) * DAY_MS;
+
+    const merged = tryMerge(
+      fridge,
+      (i) => i.name === name || (!!db && i.ingredientId === db.id),
+      hasQty ? item.quantity : undefined,
+      unit,
+      false,
+      expiresAt,
+      db
+    );
+    if (merged) {
+      setFridge(merged.list);
+      return merged.change.before !== merged.change.after ? 'merged' : 'unchanged';
+    }
+
+    setFridge([
+      ...fridge,
       {
         id: `${now}-m`,
         name,
         ingredientId: db?.id,
         category: item.category,
         location: item.location,
+        expiresAt,
         quantity: hasQty ? item.quantity : db?.qty,
-        unit: hasQty ? item.unit : db?.unit,
+        unit: hasQty ? unit : db?.unit,
         estimated: !hasQty && !!db ? true : undefined,
-        expiresAt:
-          item.expiresAt ?? now + shelfDaysFor(db, item.location, item.category) * DAY_MS,
       },
     ]);
-    return true;
+    return 'added';
   };
 
   const updateItem = (
