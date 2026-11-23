@@ -9,11 +9,13 @@ import {
   StyleSheet,
   Alert,
 } from '../../lib/ui';
+import { Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge, type FridgeItem } from '../../lib/FridgeContext';
-import { emojiFor, expiryStatus, type Tone } from '../../lib/foodInfo';
+import { emojiFor, expiryStatus, type Location, type Tone } from '../../lib/foodInfo';
+import { UNIT_OPTIONS, formatQty } from '../../lib/ingredients';
 
 const TONE_COLORS: Record<Tone, string> = {
   urgent: '#b4541a',
@@ -22,16 +24,27 @@ const TONE_COLORS: Record<Tone, string> = {
   expired: '#b91c1c',
 };
 
+const LOCATIONS: { label: string; value: Location }[] = [
+  { label: 'Lemari', value: 'rak' },
+  { label: 'Kulkas', value: 'kulkas' },
+  { label: 'Freezer', value: 'freezer' },
+];
+
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function FridgeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { fridge, removeFromFridge } = useFridge();
+  const { fridge, removeFromFridge, updateItem } = useFridge();
 
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string>('All');
   const [sortSoon, setSortSoon] = useState(false);
+
+  const [editing, setEditing] = useState<FridgeItem | null>(null);
+  const [qtyText, setQtyText] = useState('');
+  const [unit, setUnit] = useState('g');
+  const [loc, setLoc] = useState<Location>('rak');
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
@@ -48,14 +61,42 @@ export default function FridgeScreen() {
   );
   if (sortSoon) visible.sort((a, b) => a.expiresAt - b.expiresAt);
 
+  const openEdit = (item: FridgeItem) => {
+    setEditing(item);
+    setQtyText(item.quantity !== undefined ? formatQty(item.quantity) : '');
+    setUnit(item.unit ?? 'g');
+    setLoc(item.location);
+  };
+
+  const saveEdit = () => {
+    if (!editing) return;
+    const trimmed = qtyText.trim();
+    if (trimmed) {
+      const value = Number(trimmed.replace(',', '.'));
+      if (!isFinite(value) || value <= 0) {
+        Alert.alert('Jumlah tidak valid', 'Isi jumlah dengan angka lebih dari 0.');
+        return;
+      }
+      updateItem(editing.id, { quantity: value, unit, location: loc });
+    } else {
+      updateItem(editing.id, { location: loc });
+    }
+    setEditing(null);
+  };
+
   const openMenu = (item: FridgeItem) =>
     Alert.alert(capitalize(item.name), undefined, [
+      { text: 'Ubah jumlah / lokasi', onPress: () => openEdit(item) },
       { text: 'Hapus', style: 'destructive', onPress: () => removeFromFridge(item.id) },
       { text: 'Batal', style: 'cancel' },
     ]);
 
   const renderItem = ({ item }: { item: FridgeItem }) => {
     const status = expiryStatus(item.expiresAt);
+    const amount =
+      item.quantity !== undefined
+        ? `${item.estimated ? '~' : ''}${formatQty(item.quantity)} ${item.unit ?? ''}`.trim()
+        : item.category;
     return (
       <View style={styles.card}>
         <View style={styles.thumb}>
@@ -66,7 +107,7 @@ export default function FridgeScreen() {
             {capitalize(item.name)}
           </Text>
           <Text style={styles.meta}>
-            {item.quantity ? `${item.quantity} ${item.unit ?? ''}`.trim() : item.category} · {item.location}
+            {amount} · {item.location}
           </Text>
         </View>
         <View style={styles.cardRight}>
@@ -165,6 +206,73 @@ export default function FridgeScreen() {
           )
         }
       />
+
+      <Modal
+        visible={editing !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditing(null)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>{editing ? capitalize(editing.name) : ''}</Text>
+
+            <Text style={styles.sheetLabel}>Jumlah</Text>
+            <TextInput
+              style={styles.sheetInput}
+              value={qtyText}
+              onChangeText={setQtyText}
+              placeholder="Kosongkan jika tidak diubah"
+              placeholderTextColor="#9a8c7c"
+              keyboardType="decimal-pad"
+            />
+
+            <Text style={styles.sheetLabel}>Satuan</Text>
+            <View style={styles.sheetChips}>
+              {UNIT_OPTIONS.map((u) => (
+                <Pressable
+                  key={u}
+                  style={[styles.sheetChip, unit === u && styles.sheetChipActive]}
+                  onPress={() => setUnit(u)}
+                >
+                  <Text style={[styles.sheetChipText, unit === u && styles.sheetChipTextActive]}>
+                    {u}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.sheetLabel}>Simpan di</Text>
+            <View style={styles.sheetChips}>
+              {LOCATIONS.map((l) => (
+                <Pressable
+                  key={l.value}
+                  style={[styles.sheetChip, loc === l.value && styles.sheetChipActive]}
+                  onPress={() => setLoc(l.value)}
+                >
+                  <Text
+                    style={[styles.sheetChipText, loc === l.value && styles.sheetChipTextActive]}
+                  >
+                    {l.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.sheetHint}>
+              Mengubah lokasi menghitung ulang perkiraan kedaluwarsa.
+            </Text>
+
+            <View style={styles.sheetActions}>
+              <Pressable style={styles.sheetCancel} onPress={() => setEditing(null)}>
+                <Text style={styles.sheetCancelText}>Batal</Text>
+              </Pressable>
+              <Pressable style={styles.sheetSave} onPress={saveEdit}>
+                <Text style={styles.sheetSaveText}>Simpan</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -261,4 +369,55 @@ const styles = StyleSheet.create({
   cardRight: { width: 126, alignItems: 'flex-start' },
   status: { fontSize: 12, fontWeight: '500' },
   more: { alignSelf: 'flex-end', marginTop: 2 },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-start',
+    paddingTop: 90,
+    paddingHorizontal: 20,
+  },
+  sheet: { backgroundColor: '#fff7eb', borderRadius: 20, padding: 18 },
+  sheetTitle: { fontSize: 20, fontWeight: '700', color: '#3b2412', marginBottom: 4 },
+  sheetLabel: { fontSize: 13, fontWeight: '700', color: '#462b0e', marginTop: 14, marginBottom: 8 },
+  sheetInput: {
+    backgroundColor: '#fffaf3',
+    borderWidth: 1,
+    borderColor: '#e8dcc6',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 46,
+    fontSize: 15,
+    color: '#2b2118',
+  },
+  sheetChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sheetChip: {
+    backgroundColor: '#fffaf3',
+    borderWidth: 1,
+    borderColor: '#e8dcc6',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  sheetChipActive: { backgroundColor: '#8f9a6a', borderColor: '#8f9a6a' },
+  sheetChipText: { fontSize: 13, color: '#462b0e' },
+  sheetChipTextActive: { color: '#fff', fontWeight: '600' },
+  sheetHint: { fontSize: 11, color: '#605c5a', marginTop: 8 },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  sheetCancel: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#462b0e',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  sheetCancelText: { color: '#462b0e', fontWeight: '600' },
+  sheetSave: {
+    flex: 1,
+    backgroundColor: '#462b0e',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  sheetSaveText: { color: '#fff', fontWeight: '600' },
 });

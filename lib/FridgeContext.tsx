@@ -2,23 +2,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import {
   DAY_MS,
-  SHELF_LIFE_DAYS,
   defaultLocation,
   guessCategory,
   type Category,
   type Location,
 } from './foodInfo';
+import {
+  findIngredient,
+  ingredientById,
+  shelfDaysFor,
+  type StockChange,
+} from './ingredients';
 import { DEFAULT_PREFS, sanitizePrefs, type Prefs } from './prefs';
 import { RECIPES, type Recipe } from './recipes';
 
 export type FridgeItem = {
   id: string;
   name: string;
+  ingredientId?: string; // link to the ingredient database
   category: Category;
   location: Location;
   expiresAt: number;
   quantity?: number;
   unit?: string;
+  estimated?: boolean; // quantity is a typical default, not a real measurement
 };
 
 export type NewItem = {
@@ -29,6 +36,8 @@ export type NewItem = {
   unit?: string;
   expiresAt?: number;
 };
+
+export type ScannedItem = { name: string; count?: number };
 
 // Monday = 0 ... Sunday = 6
 export const todayIndex = () => (new Date().getDay() + 6) % 7;
@@ -42,17 +51,35 @@ const weekKey = () => {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 };
 
+// Gives items saved by older versions an ingredient link and a starting quantity
+const migrate = (item: FridgeItem): FridgeItem => {
+  if (item.ingredientId) return item;
+  const db = findIngredient(item.name);
+  if (!db) return item;
+  return {
+    ...item,
+    ingredientId: db.id,
+    quantity: item.quantity ?? db.qty,
+    unit: item.quantity !== undefined ? item.unit : db.unit,
+    estimated: item.quantity === undefined ? true : item.estimated,
+  };
+};
+
 type AppState = {
   fridge: FridgeItem[];
-  addToFridge: (names: string[]) => number;
+  addToFridge: (items: ScannedItem[]) => number;
   addItem: (item: NewItem) => boolean;
+  updateItem: (
+    id: string,
+    patch: { quantity?: number; unit?: string; location?: Location }
+  ) => void;
   removeFromFridge: (id: string) => void;
   clearFridge: () => void;
   favorites: string[];
   toggleFavorite: (id: string) => void;
   cookedDays: boolean[];
   toggleCookedDay: (index: number) => void;
-  cookRecipe: (recipeId: string, itemIds: string[]) => void;
+  cookRecipe: (recipeId: string, changes: StockChange[]) => void;
   usedCount: number;
   cookedRecipeIds: string[];
   aiRecipes: Recipe[];
@@ -83,7 +110,7 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
           const saved = JSON.parse(raw);
-          if (Array.isArray(saved.fridge)) setFridge(saved.fridge);
+          if (Array.isArray(saved.fridge)) setFridge(saved.fridge.map(migrate));
           if (Array.isArray(saved.favorites)) setFavorites(saved.favorites);
           if (Array.isArray(saved.aiRecipes)) setAiRecipes(saved.aiRecipes);
           if (typeof saved.usedCount === 'number') setUsedCount(saved.usedCount);
@@ -123,22 +150,44 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
   }, [loaded, fridge, favorites, cookedDays, aiRecipes, usedCount, cookedRecipeIds, prefs]);
 
   // Adds scanned ingredients, skips duplicates, returns how many were added
-  const addToFridge = (names: string[]) => {
-    const existing = new Set(fridge.map((i) => i.name));
+  const addToFridge = (items: ScannedItem[]) => {
+    const names = new Set(fridge.map((i) => i.name));
+    const ids = new Set(
+      fridge.map((i) => i.ingredientId).filter((x): x is string => !!x)
+    );
     const now = Date.now();
     const toAdd: FridgeItem[] = [];
 
-    names.forEach((raw, index) => {
-      const name = raw.trim().toLowerCase();
-      if (!name || existing.has(name)) return;
-      existing.add(name);
-      const category = guessCategory(name);
+    items.forEach((item, index) => {
+      const raw = item.name.trim().toLowerCase();
+      if (!raw) return;
+
+      const db = findIngredient(raw);
+      const name = db ? db.name : raw;
+      if (names.has(name) || (db && ids.has(db.id))) return;
+      names.add(name);
+      if (db) ids.add(db.id);
+
+      const category = db ? db.category : guessCategory(raw);
+      const location = db ? db.location : defaultLocation(category);
+      // A visible count is a real measurement for countable units (butir, buah, ...)
+      const counted =
+        !!db &&
+        item.count !== undefined &&
+        item.count > 0 &&
+        db.unit !== 'g' &&
+        db.unit !== 'ml';
+
       toAdd.push({
         id: `${now}-${index}`,
         name,
+        ingredientId: db?.id,
         category,
-        location: defaultLocation(category),
-        expiresAt: now + SHELF_LIFE_DAYS[category] * DAY_MS,
+        location,
+        expiresAt: now + shelfDaysFor(db, location, category) * DAY_MS,
+        quantity: counted ? item.count : db?.qty,
+        unit: db?.unit,
+        estimated: db ? !counted : undefined,
       });
     });
 
@@ -148,23 +197,48 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
 
   // Adds one ingredient from the manual form. Returns false if it already exists
   const addItem = (item: NewItem) => {
-    const name = item.name.trim().toLowerCase();
-    if (!name || fridge.some((i) => i.name === name)) return false;
+    const raw = item.name.trim().toLowerCase();
+    if (!raw) return false;
+    const db = findIngredient(raw);
+    const name = db ? db.name : raw;
+    if (fridge.some((i) => i.name === name || (db && i.ingredientId === db.id))) return false;
+
     const now = Date.now();
+    const hasQty = item.quantity !== undefined;
     setFridge((prev) => [
       ...prev,
       {
         id: `${now}-m`,
         name,
+        ingredientId: db?.id,
         category: item.category,
         location: item.location,
-        quantity: item.quantity,
-        unit: item.unit,
-        expiresAt: item.expiresAt ?? now + SHELF_LIFE_DAYS[item.category] * DAY_MS,
+        quantity: hasQty ? item.quantity : db?.qty,
+        unit: hasQty ? item.unit : db?.unit,
+        estimated: !hasQty && !!db ? true : undefined,
+        expiresAt:
+          item.expiresAt ?? now + shelfDaysFor(db, item.location, item.category) * DAY_MS,
       },
     ]);
     return true;
   };
+
+  const updateItem = (
+    id: string,
+    patch: { quantity?: number; unit?: string; location?: Location }
+  ) =>
+    setFridge((prev) =>
+      prev.map((i) => {
+        if (i.id !== id) return i;
+        const next: FridgeItem = { ...i, ...patch };
+        if (patch.quantity !== undefined) next.estimated = false;
+        if (patch.location && patch.location !== i.location) {
+          const db = i.ingredientId ? ingredientById(i.ingredientId) : undefined;
+          next.expiresAt = Date.now() + shelfDaysFor(db, patch.location, i.category) * DAY_MS;
+        }
+        return next;
+      })
+    );
 
   const removeFromFridge = (id: string) =>
     setFridge((prev) => prev.filter((i) => i.id !== id));
@@ -179,11 +253,18 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
   const toggleCookedDay = (index: number) =>
     setCookedDays((prev) => prev.map((v, i) => (i === index ? !v : v)));
 
-  // Marks today in the streak, uses up the given fridge items, counts the recipe
-  const cookRecipe = (recipeId: string, itemIds: string[]) => {
-    if (itemIds.length > 0) {
-      setFridge((prev) => prev.filter((i) => !itemIds.includes(i.id)));
-      setUsedCount((c) => c + itemIds.length);
+  // Applies the stock changes, marks today in the streak, counts the recipe
+  const cookRecipe = (recipeId: string, changes: StockChange[]) => {
+    if (changes.length > 0) {
+      setFridge((prev) =>
+        prev.flatMap((i) => {
+          const c = changes.find((x) => x.id === i.id);
+          if (!c) return [i];
+          if (c.after === null) return [];
+          return [{ ...i, quantity: c.after }];
+        })
+      );
+      setUsedCount((c) => c + changes.length);
     }
     setCookedRecipeIds((prev) => (prev.includes(recipeId) ? prev : [...prev, recipeId]));
     setCookedDays((prev) => prev.map((v, i) => (i === todayIndex() ? true : v)));
@@ -197,6 +278,7 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
         fridge,
         addToFridge,
         addItem,
+        updateItem,
         removeFromFridge,
         clearFridge,
         favorites,

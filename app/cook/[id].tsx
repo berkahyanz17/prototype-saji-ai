@@ -4,9 +4,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge } from '../../lib/FridgeContext';
+import { formatQty, planCooking } from '../../lib/ingredients';
 import { getRecipe, matchRecipe } from '../../lib/recipes';
 
 const COLLAPSED_COUNT = 5;
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function CookScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,27 +38,25 @@ export default function CookScreen() {
   const shown = canCollapse && !showAll ? items.slice(0, COLLAPSED_COUNT) : items;
 
   const finish = () => {
-    // Fridge items that match this recipe's ingredients (basic staples are skipped)
-    const usedIds = new Set<string>();
-    items.forEach(({ ingredient, ready }) => {
-      if (!ready || ingredient.staple || ingredient.keywords.length === 0) return;
-      fridge.forEach((f) => {
-        if (ingredient.keywords.some((k) => f.name.includes(k))) usedIds.add(f.id);
-      });
+    const changes = planCooking(recipe, fridge);
+    const lines = changes.slice(0, 8).map((c) => {
+      const label = capitalize(c.name);
+      if (c.after === null) return `• ${label}: habis`;
+      return `• ${label}: ${formatQty(c.before)} → ${formatQty(c.after)} ${c.unit ?? ''}`.trim();
     });
-    const usedNames = fridge.filter((f) => usedIds.has(f.id)).map((f) => f.name);
+    const extra = changes.length > 8 ? `\n…dan ${changes.length - 8} lainnya` : '';
 
     Alert.alert(
       'Selesai memasak?',
-      usedNames.length > 0
-        ? `Bahan ini akan dikurangi dari lemari: ${usedNames.join(', ')}.`
+      lines.length > 0
+        ? `Stok akan dikurangi:\n${lines.join('\n')}${extra}`
         : 'Streak masak hari ini akan dicatat.',
       [
         { text: 'Batal', style: 'cancel' },
         {
           text: 'Selesai',
           onPress: () => {
-            cookRecipe(recipe.id, Array.from(usedIds));
+            cookRecipe(recipe.id, changes);
             router.navigate('/');
             Alert.alert('Selamat makan! 🍽️', 'Streak masak hari ini sudah tercatat.');
           },

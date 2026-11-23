@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet } from './ui';
 import type { Recipe } from './recipes';
+import { nutritionOf } from './ingredients';
 
 type Props = {
   recipe: Recipe;
@@ -27,7 +28,7 @@ export default function RecipeCard({
           {recipe.name}
         </Text>
         <Text style={styles.meta}>
-          {recipe.minutes} menit · {recipe.calories} kkal
+          {recipe.minutes} menit · {nutritionOf(recipe).calories} kkal
         </Text>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>

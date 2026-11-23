@@ -3,9 +3,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge } from '../../lib/FridgeContext';
-import { getRecipe, nutrientsOf } from '../../lib/recipes';
-
-const ORDER = ['Protein', 'Karbohidrat', 'Lemak', 'Gula', 'Natrium', 'Serat'];
+import { nutritionOf } from '../../lib/ingredients';
+import { getRecipe } from '../../lib/recipes';
 
 export default function NutritionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -13,11 +12,18 @@ export default function NutritionScreen() {
   const insets = useSafeAreaInsets();
   const { recipes } = useFridge();
   const recipe = getRecipe(String(id), recipes);
+  const n = recipe ? nutritionOf(recipe) : null;
 
-  const rows = recipe
-    ? [...nutrientsOf(recipe)].sort(
-        (a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label)
-      )
+  // Targets are general daily reference values for a 2000 kcal diet
+  const rows = n
+    ? [
+        { label: 'Protein', value: n.protein, target: 60, unit: 'g' },
+        { label: 'Karbohidrat', value: n.carbs, target: 300, unit: 'g' },
+        { label: 'Lemak', value: n.fat, target: 65, unit: 'g' },
+        { label: 'Gula', value: n.sugar, target: 50, unit: 'g' },
+        { label: 'Natrium', value: n.sodium, target: 2000, unit: 'mg' },
+        { label: 'Serat', value: n.fiber, target: 30, unit: 'g' },
+      ]
     : [];
 
   return (
@@ -36,7 +42,7 @@ export default function NutritionScreen() {
           <Text style={styles.title}>Detail Nutrisi</Text>
         </View>
 
-        {!recipe ? (
+        {!recipe || !n ? (
           <Text style={styles.recipeName}>Resep tidak ditemukan</Text>
         ) : (
           <>
@@ -49,10 +55,10 @@ export default function NutritionScreen() {
 
             <View style={styles.summary}>
               {[
-                { label: 'Kalori', value: recipe.calories, unit: 'kkal' },
-                { label: 'Protein', value: recipe.protein, unit: 'g' },
-                { label: 'Karbohidrat', value: recipe.carbs, unit: 'g' },
-                { label: 'Lemak', value: recipe.fat, unit: 'g' },
+                { label: 'Kalori', value: n.calories, unit: 'kkal' },
+                { label: 'Protein', value: n.protein, unit: 'g' },
+                { label: 'Karbohidrat', value: n.carbs, unit: 'g' },
+                { label: 'Lemak', value: n.fat, unit: 'g' },
               ].map((cell, index) => (
                 <View key={cell.label} style={[styles.cell, index > 0 && styles.cellDivider]}>
                   <Text style={styles.cellLabel}>{cell.label}</Text>
@@ -62,16 +68,16 @@ export default function NutritionScreen() {
               ))}
             </View>
 
-            {rows.map((n) => {
-              const percent = Math.round((n.value / n.target) * 100);
+            {rows.map((row) => {
+              const percent = Math.round((row.value / row.target) * 100);
               return (
-                <View key={n.label} style={styles.row}>
-                  <Text style={styles.rowLabel}>{n.label}</Text>
+                <View key={row.label} style={styles.row}>
+                  <Text style={styles.rowLabel}>{row.label}</Text>
                   <View style={styles.track}>
                     <View style={[styles.fill, { width: `${Math.min(100, percent)}%` }]} />
                   </View>
                   <Text style={styles.rowValue}>
-                    {n.value} {n.unit}
+                    {row.value} {row.unit}
                   </Text>
                   <Text style={styles.rowPercent}>{percent} % AKG</Text>
                 </View>
@@ -79,7 +85,11 @@ export default function NutritionScreen() {
             })}
 
             <Text style={styles.note}>
-              Perkiraan per porsi. AKG memakai acuan harian umum (diet 2000 kkal).
+              {n.fromDb
+                ? `Dihitung dari database bahan (${n.matched} dari ${n.total} bahan cocok).`
+                : `Perkiraan AI (database hanya cocok ${n.matched} dari ${n.total} bahan).`}{' '}
+              Per porsi; AKG memakai acuan harian umum (diet 2000 kkal). Hanya perkiraan, bukan
+              saran medis.
             </Text>
           </>
         )}
@@ -133,7 +143,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fill: { height: 10, backgroundColor: '#a9cf6a' },
-  rowValue: { width: 52, fontSize: 12, fontWeight: '500', color: '#1e1e1e', textAlign: 'right' },
+  rowValue: { width: 56, fontSize: 12, fontWeight: '500', color: '#1e1e1e', textAlign: 'right' },
   rowPercent: { width: 62, fontSize: 12, color: '#1e1e1e' },
-  note: { fontSize: 12, color: '#605c5a', textAlign: 'center', marginTop: 6 },
+  note: { fontSize: 12, color: '#605c5a', textAlign: 'center', marginTop: 6, lineHeight: 18 },
 });

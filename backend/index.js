@@ -15,18 +15,18 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 console.log('Model:', MODEL);
 console.log('API key loaded:', KEY ? `yes (${KEY.length} chars)` : 'NO - check backend/.env');
 
-async function askGemini(parts, timeoutMs) {
+async function askGemini(parts, timeoutMs, temperature) {
   const started = Date.now();
+  const generationConfig = { responseMimeType: 'application/json' };
+  if (temperature !== undefined) generationConfig.temperature = temperature;
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
       signal: AbortSignal.timeout(timeoutMs),
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { responseMimeType: 'application/json' },
-      }),
+      body: JSON.stringify({ contents: [{ parts }], generationConfig }),
     }
   );
   console.log(`-> Gemini answered: HTTP ${response.status} after ${Date.now() - started} ms`);
@@ -51,6 +51,11 @@ const num = (v) => Math.max(0, Math.round(Number(v) || 0));
 const slug = (s) =>
   String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+const UNITS = [
+  'g', 'kg', 'ml', 'liter', 'butir', 'siung', 'buah', 'lembar',
+  'potong', 'batang', 'ikat', 'bungkus', 'sdm', 'sdt', 'ruas',
+];
+
 function cleanPrefs(p) {
   const prefs = p && typeof p === 'object' ? p : {};
   return {
@@ -66,10 +71,11 @@ function cleanPrefs(p) {
   };
 }
 
-const ANALYZE_PROMPT = `You are a home-cooking assistant. Look at the photo and list only the items that can be used as cooking ingredients. Ignore drinks, bottled water, coffee or tea sachets, packaging, and non-food objects.
-Respond ONLY with JSON in exactly this shape:
-{"ingredients": ["string"]}
-If no food is visible, return an empty array.`;
+const ANALYZE_PROMPT = `You are the ingredient detector of an Indonesian cooking app. Look at the photo.
+1. "authenticity": "real" if the photo shows real physical food items; "screen" if it shows a computer or phone screen or monitor (visible pixels, bezels, interface elements, moire); "print" if it shows a printed picture, poster, magazine page or drawing; "unclear" if you cannot tell or the photo is too dark or blurry.
+2. "items": list ONLY food items you can clearly see that are usable as cooking ingredients: raw ingredients, or packaged food used in cooking (instant noodles, sauces, cooking oil, flour). Use common Indonesian names in lowercase (telur, tomat, bawang merah, kecap manis, mie instan). Ignore drinks, bottled water, coffee or tea sachets, empty packaging, cutlery, containers, and anything you cannot identify with confidence. NEVER guess hidden items. "count" is the number of whole items visible for countable items (eggs, tomatoes, onions), otherwise null.
+Respond ONLY with JSON in exactly this shape: {"authenticity":"real","items":[{"name":"telur","count":2}]}
+If no food is visible, return an empty items array.`;
 
 const recipePrompt = (list, prefs) => {
   const cuisine =
@@ -95,15 +101,16 @@ ${list.join(', ')}
 Preferensi pengguna (wajib dipatuhi):
 ${lines.join('\n')}
 
-Buat 5 resep masakan rumahan yang NYATA dan masuk akal, memakai sebanyak mungkin bahan di atas. Boleh menambahkan bahan lain, tapi minimalkan. Urutkan dari yang paling cocok dengan bahan pengguna. Tulis semua dalam bahasa Indonesia, untuk 1 porsi.
+Buat 5 resep masakan rumahan yang NYATA dan sudah umum dimasak orang, memakai sebanyak mungkin bahan di atas. Boleh menambah bahan lain, tapi maksimal 4 bahan tambahan (selain bumbu dapur dasar) per resep. Jangan mengarang masakan atau bahan fiktif. Urutkan dari yang paling cocok dengan bahan pengguna. Tulis semua dalam bahasa Indonesia, untuk 1 porsi.
 Aturan:
 - "fromFridge": isi dengan TEPAT SALAH SATU nama dari daftar bahan di atas jika bahan itu berasal dari situ; jika tidak, isi null.
 - "staple": true hanya untuk bahan dapur dasar (garam, minyak goreng, gula, air, merica); selain itu false.
+- "qty": angka lebih dari 0. "unit": HARUS salah satu dari: g, kg, ml, liter, butir, siung, buah, lembar, potong, batang, ikat, bungkus, sdm, sdt. Jangan pakai "secukupnya".
 - Nilai gizi adalah perkiraan per porsi: kalori (kkal), protein, karbohidrat, lemak, serat, gula (gram), natrium (mg).
 - "cost": perkiraan total biaya bahan per porsi dalam rupiah (angka saja).
 - 4 sampai 7 langkah memasak yang singkat dan jelas.
 Balas HANYA dengan JSON persis berbentuk:
-{"recipes":[{"name":"","emoji":"","minutes":0,"servings":1,"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0,"cost":0,"ingredients":[{"name":"","amount":"","fromFridge":null,"staple":false}],"steps":[""]}]}`;
+{"recipes":[{"name":"","emoji":"","minutes":0,"servings":1,"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0,"cost":0,"ingredients":[{"name":"","qty":0,"unit":"","fromFridge":null,"staple":false}],"steps":[""]}]}`;
 };
 
 function normalizeRecipes(parsed, ingredientList) {
@@ -119,9 +126,11 @@ function normalizeRecipes(parsed, ingredientList) {
       const ingredients = (Array.isArray(r.ingredients) ? r.ingredients : [])
         .map((x) => {
           const from = x?.fromFridge ? String(x.fromFridge).toLowerCase().trim() : '';
+          const qty = Math.round(Number(x?.qty) * 100) / 100;
+          const unit = String(x?.unit ?? '').toLowerCase().trim();
           return {
             name: String(x?.name ?? '').trim(),
-            amount: String(x?.amount ?? '').trim(),
+            amount: qty > 0 && UNITS.includes(unit) ? `${qty} ${unit}` : 'secukupnya',
             keywords: from && allowed.has(from) ? [from] : [],
             staple: Boolean(x?.staple),
           };
@@ -133,6 +142,11 @@ function normalizeRecipes(parsed, ingredientList) {
         .filter(Boolean);
 
       if (ingredients.length === 0 || steps.length === 0) return null;
+
+      // Guardrails: the recipe must really use the fridge, with few extra ingredients
+      const fromFridgeCount = ingredients.filter((x) => x.keywords.length > 0).length;
+      const missing = ingredients.filter((x) => x.keywords.length === 0 && !x.staple).length;
+      if (fromFridgeCount === 0 || missing > 4) return null;
 
       const id = `ai-${slug(name) || i}`;
       if (seen.has(id)) return null;
@@ -187,14 +201,28 @@ app.post('/analyze', async (req, res) => {
     console.log(`-> image received: ${Math.round(imageBase64.length / 1024)} KB`);
     const parsed = await askGemini(
       [{ text: ANALYZE_PROMPT }, { inline_data: { mime_type: mimeType, data: imageBase64 } }],
-      45000
+      45000,
+      0.2
     );
 
-    const ingredients = Array.isArray(parsed.ingredients)
-      ? parsed.ingredients.map(String)
-      : [];
-    console.log(`-> done: ${ingredients.length} ingredients`);
-    res.json({ ingredients, dishes: [] });
+    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    const seen = new Set();
+    const ingredients = [];
+    const counts = {};
+    for (const it of items.slice(0, 30)) {
+      const name = String(it?.name ?? '').trim().toLowerCase().slice(0, 40);
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      ingredients.push(name);
+      const c = Math.round(Number(it?.count));
+      if (Number.isFinite(c) && c >= 1 && c <= 99) counts[name] = c;
+    }
+    const authenticity = ['real', 'screen', 'print', 'unclear'].includes(parsed.authenticity)
+      ? parsed.authenticity
+      : 'unclear';
+
+    console.log(`-> done: ${ingredients.length} ingredients, authenticity=${authenticity}`);
+    res.json({ ingredients, counts, authenticity, dishes: [] });
   } catch (err) {
     console.error('-> ERROR:', err.message);
     res.status(err.status || 500).json({ error: err.message || 'Server error' });
@@ -239,5 +267,4 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+app.listen(3000, '0.0.0.0', () => console.log('Server running on port 3000'));

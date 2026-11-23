@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   Image,
+  ScrollView,
   ActivityIndicator,
   StyleSheet,
   Alert,
@@ -12,8 +13,15 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { analyzePhoto } from '../lib/api';
+import { analyzePhoto, type ScanResult } from '../lib/api';
 import { useFridge } from '../lib/FridgeContext';
+import { findIngredient } from '../lib/ingredients';
+
+const WARNINGS: Record<string, string> = {
+  screen: 'Foto ini sepertinya layar atau monitor, bukan bahan asli.',
+  print: 'Foto ini sepertinya gambar cetak, bukan bahan asli.',
+  unclear: 'Foto kurang jelas, hasil mungkin tidak akurat.',
+};
 
 export default function CameraScreen() {
   const router = useRouter();
@@ -21,19 +29,22 @@ export default function CameraScreen() {
   const { addToFridge } = useFridge();
   const [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [ingredients, setIngredients] = useState<string[] | null>(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
 
   const handleAsset = async (asset: ImagePicker.ImagePickerAsset) => {
     setUri(asset.uri);
-    setIngredients(null);
+    setResult(null);
+    setSelected([]);
     if (!asset.base64) {
       Alert.alert('Foto gagal dibaca', 'Coba ambil foto lagi.');
       return;
     }
     setLoading(true);
     try {
-      const result = await analyzePhoto(asset.base64);
-      setIngredients(result.ingredients);
+      const res = await analyzePhoto(asset.base64);
+      setResult(res);
+      setSelected(res.ingredients);
     } catch (e) {
       Alert.alert(
         'Gagal menganalisis foto',
@@ -63,12 +74,19 @@ export default function CameraScreen() {
     if (!res.canceled) await handleAsset(res.assets[0]);
   };
 
+  const toggle = (name: string) =>
+    setSelected((prev) =>
+      prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]
+    );
+
   const saveToFridge = () => {
-    if (!ingredients || ingredients.length === 0) {
-      Alert.alert('Belum ada bahan', 'Ambil atau pilih foto bahan makanan dulu.');
+    if (!result || selected.length === 0) {
+      Alert.alert('Belum ada bahan', 'Ambil foto bahan dan pilih minimal satu bahan.');
       return;
     }
-    const added = addToFridge(ingredients);
+    const added = addToFridge(
+      selected.map((name) => ({ name, count: result.counts?.[name] }))
+    );
     Alert.alert(
       'Lemari',
       added > 0
@@ -77,6 +95,11 @@ export default function CameraScreen() {
     );
     router.navigate('/fridge');
   };
+
+  const warning =
+    result && result.authenticity && result.authenticity !== 'real'
+      ? WARNINGS[result.authenticity]
+      : null;
 
   return (
     <View style={styles.container}>
@@ -103,22 +126,57 @@ export default function CameraScreen() {
         </View>
       )}
 
-      {ingredients && !loading && (
+      {result && !loading && (
         <View style={[styles.result, { bottom: insets.bottom + 130 }]}>
           <Text style={styles.resultTitle}>Bahan terdeteksi</Text>
-          {ingredients.length === 0 ? (
+
+          {warning && (
+            <View style={styles.warning}>
+              <Ionicons name="warning-outline" size={18} color="#b4541a" />
+              <Text style={styles.warningText}>{warning}</Text>
+            </View>
+          )}
+
+          {result.ingredients.length === 0 ? (
             <Text style={styles.none}>Tidak ada bahan terdeteksi.</Text>
           ) : (
             <>
-              <View style={styles.chips}>
-                {ingredients.map((name) => (
-                  <View key={name} style={styles.chip}>
-                    <Text style={styles.chipText}>{name}</Text>
-                  </View>
-                ))}
-              </View>
-              <Pressable style={styles.saveButton} onPress={saveToFridge}>
-                <Text style={styles.saveText}>Tambah ke lemari</Text>
+              <ScrollView style={styles.chipScroll}>
+                <View style={styles.chips}>
+                  {result.ingredients.map((name) => {
+                    const known = !!findIngredient(name);
+                    const on = selected.includes(name);
+                    return (
+                      <Pressable
+                        key={name}
+                        onPress={() => toggle(name)}
+                        style={[
+                          styles.chip,
+                          known ? styles.chipKnown : styles.chipUnknown,
+                          !on && styles.chipOff,
+                        ]}
+                      >
+                        <Text style={[styles.chipText, !known && styles.chipTextUnknown]}>
+                          {name}
+                          {known ? '' : ' ?'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+              <Text style={styles.legend}>
+                Ketuk untuk memilih. Tanda ? berarti bahan belum ada di database, jadi
+                tanpa data nutrisi.
+              </Text>
+              <Pressable
+                style={[styles.saveButton, selected.length === 0 && styles.saveDisabled]}
+                onPress={saveToFridge}
+                disabled={selected.length === 0}
+              >
+                <Text style={styles.saveText}>
+                  {warning ? 'Tetap tambah ke lemari' : 'Tambah ke lemari'}
+                </Text>
               </Pressable>
             </>
           )}
@@ -132,7 +190,7 @@ export default function CameraScreen() {
         <Pressable style={styles.shutter} onPress={takePhoto} disabled={loading}>
           <Ionicons name="camera-outline" size={40} color="#8a7560" />
         </Pressable>
-                <Pressable
+        <Pressable
           style={styles.sideButton}
           onPress={() => router.push('/add-ingredient')}
           disabled={loading}
@@ -146,7 +204,11 @@ export default function CameraScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ece9e2' },
-  frameWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  frameWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   frame: {
     width: '72%',
     aspectRatio: 0.78,
@@ -178,16 +240,33 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   resultTitle: { fontSize: 16, fontWeight: '700', color: '#462b0e', marginBottom: 8 },
+  warning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fbe3d2',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  warningText: { flex: 1, fontSize: 12, color: '#8a3d10' },
   none: { color: '#605c5a' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { backgroundColor: '#d4e8a2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  chipScroll: { maxHeight: 130 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  chipKnown: { backgroundColor: '#d4e8a2' },
+  chipUnknown: { backgroundColor: '#e3e0d8' },
+  chipOff: { opacity: 0.35 },
   chipText: { color: '#0c361d', fontWeight: '600' },
+  chipTextUnknown: { color: '#605c5a' },
+  legend: { fontSize: 11, color: '#605c5a', marginVertical: 8 },
   saveButton: {
     backgroundColor: '#462b0e',
     padding: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
+  saveDisabled: { opacity: 0.4 },
   saveText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   controls: {
     position: 'absolute',

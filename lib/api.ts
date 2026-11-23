@@ -10,6 +10,8 @@ export type Dish = {
 
 export type ScanResult = {
   ingredients: string[];
+  counts?: Record<string, number>;
+  authenticity?: 'real' | 'screen' | 'print' | 'unclear';
   dishes: Dish[];
 };
 

@@ -8,7 +8,11 @@ import { budgetLabel, equipmentLabel, reminderLabel, timeLabel } from '../../lib
 const USER_NAME = 'User'; // change to your name
 const USER_EMAIL = 'user@email.com'; // change to your email
 
-const HELP = ['Pusat Bantuan', 'Tentang Saji AI'];
+const HELP = [
+  { label: 'Pusat Bantuan', page: 'help' },
+  { label: 'Tentang Saji AI', page: 'about' },
+  { label: 'Syarat & Ketentuan', page: 'terms' },
+] as const;
 
 const soon = () => Alert.alert('Segera hadir');
 
@@ -114,9 +118,13 @@ export default function ProfileScreen() {
       ))}
 
       <Text style={styles.section}>Bantuan dan Informasi</Text>
-      {HELP.map((label) => (
-        <Pressable key={label} style={styles.listRow} onPress={soon}>
-          <Text style={styles.listLabel}>{label}</Text>
+      {HELP.map((h) => (
+        <Pressable
+          key={h.page}
+          style={styles.listRow}
+          onPress={() => router.push({ pathname: '/info/[page]', params: { page: h.page } })}
+        >
+          <Text style={styles.listLabel}>{h.label}</Text>
           <View style={styles.spacer} />
           <Ionicons name="chevron-forward" size={18} color="#462b0e" />
         </Pressable>

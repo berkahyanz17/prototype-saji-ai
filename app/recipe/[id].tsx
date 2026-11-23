@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge } from '../../lib/FridgeContext';
 import { getRecipe, matchRecipe } from '../../lib/recipes';
 import { formatRp } from '../../lib/prefs';
+import { nutritionOf } from '../../lib/ingredients';
 
 export default function RecipeDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -78,8 +79,8 @@ export default function RecipeDetail() {
             <Ionicons name="time-outline" size={22} color="#20392e" />
             <Text style={styles.statText}>{recipe.minutes} mnt</Text>
           </View>
-          <Text style={styles.statText}>{recipe.calories} kkal</Text>
-          <Text style={styles.statText}>{recipe.protein} g protein</Text>
+          <Text style={styles.statText}>{nutritionOf(recipe).calories} kkal</Text>
+          <Text style={styles.statText}>{nutritionOf(recipe).protein} g protein</Text>
         </View>
         {recipe.cost ? (
           <Text style={styles.cost}>
