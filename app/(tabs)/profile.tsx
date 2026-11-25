@@ -18,8 +18,16 @@ const soon = () => Alert.alert('Segera hadir');
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { favorites, cookedDays, usedCount, cookedRecipeIds, prefs, impact, profile } =
-    useFridge();
+    const {
+    favorites,
+    cookedDays,
+    usedCount,
+    cookedRecipeIds,
+    prefs,
+    impact,
+    profile,
+    isPlus,
+  } = useFridge();
 
   const streak = cookedDays.filter(Boolean).length;
   const rate = wasteRate(impact);
@@ -66,13 +74,18 @@ export default function ProfileScreen() {
             <View style={styles.pill}>
               <Text style={styles.pillText}>{favorites.length} favorit</Text>
             </View>
+            {isPlus && (
+              <View style={[styles.pill, styles.plusPill]}>
+                <Text style={styles.pillText}>✦ Saji Plus</Text>
+              </View>
+            )}
           </View>
         </View>
         <Ionicons name="chevron-forward" size={20} color="#462b0e" />
       </Pressable>
 
       <View style={styles.shortcutCard}>
-        <Pressable style={styles.shortcut} onPress={soon}>
+        <Pressable style={styles.shortcut} onPress={() => router.push('/shop')}>
           <View style={styles.shortcutBox}>
             <Ionicons name="storefront-outline" size={26} color="#462b0e" />
           </View>
@@ -179,6 +192,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   pillText: { fontSize: 11, fontWeight: '600', color: '#2c311e' },
+  plusPill: { backgroundColor: '#fbefc8' },
   shortcutCard: {
     flexDirection: 'row',
     gap: 16,

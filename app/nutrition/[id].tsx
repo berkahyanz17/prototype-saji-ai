@@ -53,7 +53,13 @@ export default function NutritionScreen() {
               <Text style={styles.recipeName}>{recipe.name}</Text>
             </View>
 
-            <View style={styles.summary}>
+            {n.unavailable && (
+              <Text style={styles.note}>
+                Nutrisi belum bisa dihitung: kurang dari 70% bahan resep ini ada di database
+                atau jumlahnya belum diisi. Pilih nama bahan dari saran saat membuat resep.
+              </Text>
+            )}
+            <View style={[styles.summary, n.unavailable && styles.hidden]}>
               {[
                 { label: 'Kalori', value: n.calories, unit: 'kkal' },
                 { label: 'Protein', value: n.protein, unit: 'g' },
@@ -68,7 +74,7 @@ export default function NutritionScreen() {
               ))}
             </View>
 
-            {rows.map((row) => {
+            {(n.unavailable ? [] : rows).map((row) => {
               const percent = Math.round((row.value / row.target) * 100);
               return (
                 <View key={row.label} style={styles.row}>
@@ -146,4 +152,5 @@ const styles = StyleSheet.create({
   rowValue: { width: 56, fontSize: 12, fontWeight: '500', color: '#1e1e1e', textAlign: 'right' },
   rowPercent: { width: 62, fontSize: 12, color: '#1e1e1e' },
   note: { fontSize: 12, color: '#605c5a', textAlign: 'center', marginTop: 6, lineHeight: 18 },
+  hidden: { display: 'none' },
 });

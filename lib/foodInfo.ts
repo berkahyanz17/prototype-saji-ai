@@ -1,5 +1,6 @@
 export type Category =
   | 'Sayur'
+  | 'Buah'
   | 'Bumbu'
   | 'Produk susu'
   | 'Protein'
@@ -12,9 +13,10 @@ export type Tone = 'urgent' | 'fresh' | 'far' | 'expired';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Estimated shelf life in days, by category
+// Estimated shelf life in days, by category (used for items not in the database)
 export const SHELF_LIFE_DAYS: Record<Category, number> = {
   Sayur: 5,
+  Buah: 7,
   Bumbu: 60,
   'Produk susu': 7,
   Protein: 5,
@@ -26,6 +28,7 @@ export const SHELF_LIFE_DAYS: Record<Category, number> = {
 const CATEGORY_KEYWORDS: [Category, string[]][] = [
   ['Produk susu', ['milk', 'susu', 'yogurt', 'yoghurt', 'cheese', 'keju', 'butter', 'mentega', 'cream', 'krim']],
   ['Bumbu', ['garlic', 'bawang', 'onion', 'ginger', 'jahe', 'chili', 'chilli', 'cabai', 'cabe', 'sauce', 'saus', 'kecap', 'salt', 'garam', 'pepper', 'merica', 'lada', 'sugar', 'gula', 'oil', 'minyak', 'spice', 'bumbu', 'seasoning', 'turmeric', 'kunyit']],
+  ['Buah', ['banana', 'pisang', 'apple', 'apel', 'orange', 'jeruk', 'mango', 'mangga', 'watermelon', 'semangka', 'pineapple', 'nanas', 'grape', 'anggur', 'strawberry', 'stroberi', 'papaya', 'pepaya', 'melon', 'lemon', 'guava', 'jambu']],
   ['Sayur', ['tomato', 'tomat', 'spinach', 'bayam', 'carrot', 'wortel', 'cabbage', 'kol', 'kubis', 'cucumber', 'timun', 'lettuce', 'selada', 'potato', 'kentang', 'broccoli', 'brokoli', 'avocado', 'alpukat', 'eggplant', 'terong', 'corn', 'jagung', 'mushroom', 'jamur', 'kangkung', 'sawi', 'buncis', 'pumpkin', 'labu', 'vegetable', 'sayur']],
   ['Protein', ['egg', 'telur', 'chicken', 'ayam', 'beef', 'sapi', 'daging', 'meat', 'fish', 'ikan', 'shrimp', 'udang', 'tofu', 'tahu', 'tempe', 'tempeh', 'sausage', 'sosis', 'bacon', 'pork', 'lamb', 'kambing', 'squid', 'cumi', 'crab', 'kepiting']],
   ['Karbo', ['rice', 'nasi', 'beras', 'noodle', 'mie', 'bread', 'roti', 'pasta', 'spaghetti', 'flour', 'tepung', 'oat', 'cereal']],
@@ -48,6 +51,23 @@ export function defaultLocation(category: Category): Location {
 }
 
 const EMOJI: [string[], string][] = [
+  [['eggplant', 'terong'], '🍆'],
+  [['lemon', 'lime', 'nipis'], '🍋'],
+  [['orange', 'jeruk'], '🍊'],
+  [['banana', 'pisang'], '🍌'],
+  [['apple', 'apel'], '🍎'],
+  [['mango', 'mangga'], '🥭'],
+  [['watermelon', 'semangka'], '🍉'],
+  [['pineapple', 'nanas'], '🍍'],
+  [['grape', 'anggur'], '🍇'],
+  [['strawberry', 'stroberi'], '🍓'],
+  [['melon'], '🍈'],
+  [['kacang panjang', 'buncis', 'long bean', 'yardlong', 'green bean', 'polong', 'peas'], '🥬'],
+  [['peanut', 'kacang'], '🥜'],
+  [['honey', 'madu'], '🍯'],
+  [['sweet potato', 'ubi', 'singkong'], '🍠'],
+  [['sausage', 'sosis', 'bakso', 'meatball'], '🍢'],
+  [['squid', 'cumi'], '🦑'],
   [['garlic', 'bawang putih'], '🧄'],
   [['onion', 'bawang'], '🧅'],
   [['egg', 'telur'], '🥚'],
@@ -77,6 +97,7 @@ const EMOJI: [string[], string][] = [
 
 const CATEGORY_EMOJI: Record<Category, string> = {
   Sayur: '🥬',
+  Buah: '🍎',
   Bumbu: '🧂',
   'Produk susu': '🥛',
   Protein: '🍖',

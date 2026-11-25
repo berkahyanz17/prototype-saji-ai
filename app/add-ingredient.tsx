@@ -15,7 +15,7 @@ import { useFridge } from '../lib/FridgeContext';
 import { guessCategory, type Category, type Location } from '../lib/foodInfo';
 import { UNIT_OPTIONS } from '../lib/ingredients';
 
-const CATEGORIES: Category[] = ['Sayur', 'Bumbu', 'Produk susu', 'Protein', 'Karbo', 'Lainnya'];
+const CATEGORIES: Category[] = ['Sayur', 'Buah', 'Bumbu', 'Produk susu', 'Protein', 'Karbo', 'Lainnya'];
 const UNITS = UNIT_OPTIONS;
 const LOCATIONS: { label: string; value: Location }[] = [
   { label: 'Lemari', value: 'rak' },

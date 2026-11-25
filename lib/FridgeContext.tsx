@@ -19,6 +19,7 @@ import {
   type Ingredient,
   type StockChange,
 } from './ingredients';
+import { AD_REWARD, FREE_DAILY, MAX_ADS, type PlanId } from './plan';
 import { DEFAULT_PREFS, sanitizePrefs, type Prefs } from './prefs';
 import { RECIPES, type Recipe } from './recipes';
 
@@ -51,7 +52,11 @@ export type AddResult = 'added' | 'merged' | 'unchanged';
 
 export type UserProfile = { name: string; avatar: string };
 
+export type Credits = { day: string; used: number; bonus: number; ads: number };
+export type PlusState = { active: boolean; plan: PlanId | null; since: number | null };
+
 const DEFAULT_PROFILE: UserProfile = { name: 'Teman', avatar: DEFAULT_AVATAR };
+const INACTIVE_PLUS: PlusState = { active: false, plan: null, since: null };
 
 function sanitizeProfile(raw: unknown): UserProfile {
   const p = (raw && typeof raw === 'object' ? raw : {}) as Partial<UserProfile>;
@@ -64,6 +69,40 @@ function sanitizeProfile(raw: unknown): UserProfile {
 
 // Monday = 0 ... Sunday = 6
 export const todayIndex = () => (new Date().getDay() + 6) % 7;
+
+const dayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
+const freshCredits = (): Credits => ({ day: dayKey(), used: 0, bonus: 0, ads: 0 });
+
+// Credits reset every day
+const currentCredits = (c: Credits): Credits => (c.day === dayKey() ? c : freshCredits());
+
+function sanitizeCredits(raw: unknown): Credits {
+  const p = (raw && typeof raw === 'object' ? raw : {}) as Partial<Credits>;
+  if (p.day !== dayKey()) return freshCredits();
+  const n = (v: unknown) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : 0);
+  return { day: dayKey(), used: n(p.used), bonus: n(p.bonus), ads: n(p.ads) };
+}
+
+function sanitizePlus(raw: unknown): PlusState {
+  const p = (raw && typeof raw === 'object' ? raw : {}) as Partial<PlusState>;
+  if (!p.active) return INACTIVE_PLUS;
+  return {
+    active: true,
+    plan: p.plan === 'tahunan' ? 'tahunan' : 'bulanan',
+    since: typeof p.since === 'number' ? p.since : Date.now(),
+  };
+}
+
+const isRecipe = (r: unknown): r is Recipe =>
+  !!r &&
+  typeof r === 'object' &&
+  typeof (r as Recipe).id === 'string' &&
+  Array.isArray((r as Recipe).ingredients) &&
+  Array.isArray((r as Recipe).steps);
 
 const STORAGE_KEY = 'saji-state-v1';
 
@@ -166,13 +205,26 @@ type AppState = {
   cookedRecipeIds: string[];
   aiRecipes: Recipe[];
   setAiRecipes: (recipes: Recipe[]) => void;
-  recipes: Recipe[]; // AI recipes first, then the built-in ones
+  userRecipes: Recipe[]; // the user's own recipes, including drafts
+  saveUserRecipe: (recipe: Recipe) => void;
+  deleteUserRecipe: (id: string) => void;
+  recipes: Recipe[]; // own (published) + AI + built-in
   prefs: Prefs;
   setPrefs: (prefs: Prefs) => void;
   impact: Impact;
   resetImpact: () => void;
   profile: UserProfile;
   setProfile: (profile: UserProfile) => void;
+  // Credits and Saji Plus (demo)
+  isPlus: boolean;
+  plus: PlusState;
+  creditsLeft: number;
+  adsLeft: number;
+  canSpend: () => boolean;
+  spendCredit: () => void;
+  watchAd: () => boolean;
+  activatePlus: (plan: PlanId) => void;
+  cancelPlus: () => void;
   resetAll: () => void;
 };
 
@@ -183,11 +235,14 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
   const [fridge, setFridge] = useState<FridgeItem[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [aiRecipes, setAiRecipes] = useState<Recipe[]>([]);
+  const [userRecipes, setUserRecipes] = useState<Recipe[]>([]);
   const [usedCount, setUsedCount] = useState(0);
   const [cookedRecipeIds, setCookedRecipeIds] = useState<string[]>([]);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [impact, setImpact] = useState<Impact>(newImpact);
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+  const [credits, setCredits] = useState<Credits>(freshCredits);
+  const [plus, setPlus] = useState<PlusState>(INACTIVE_PLUS);
   const [cookedDays, setCookedDays] = useState<boolean[]>(
     new Array<boolean>(7).fill(false)
   );
@@ -202,11 +257,14 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
           if (Array.isArray(saved.fridge)) setFridge(saved.fridge.map(migrate));
           if (Array.isArray(saved.favorites)) setFavorites(saved.favorites);
           if (Array.isArray(saved.aiRecipes)) setAiRecipes(saved.aiRecipes);
+          if (Array.isArray(saved.userRecipes)) setUserRecipes(saved.userRecipes.filter(isRecipe));
           if (typeof saved.usedCount === 'number') setUsedCount(saved.usedCount);
           if (Array.isArray(saved.cookedRecipeIds)) setCookedRecipeIds(saved.cookedRecipeIds);
           if (saved.prefs) setPrefs(sanitizePrefs(saved.prefs));
           if (saved.impact) setImpact(sanitizeImpact(saved.impact));
           if (saved.profile) setProfile(sanitizeProfile(saved.profile));
+          if (saved.credits) setCredits(sanitizeCredits(saved.credits));
+          if (saved.plus) setPlus(sanitizePlus(saved.plus));
           if (
             saved.weekKey === weekKey() &&
             Array.isArray(saved.cookedDays) &&
@@ -232,11 +290,14 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
         favorites,
         cookedDays,
         aiRecipes,
+        userRecipes,
         usedCount,
         cookedRecipeIds,
         prefs,
         impact,
         profile,
+        credits,
+        plus,
         weekKey: weekKey(),
       })
     ).catch(() => {});
@@ -246,12 +307,44 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
     favorites,
     cookedDays,
     aiRecipes,
+    userRecipes,
     usedCount,
     cookedRecipeIds,
     prefs,
     impact,
     profile,
+    credits,
+    plus,
   ]);
+
+  // Credits for today
+  const today = currentCredits(credits);
+  const creditsLeft = Math.max(0, FREE_DAILY + today.bonus - today.used);
+  const adsLeft = Math.max(0, MAX_ADS - today.ads);
+  const isPlus = plus.active;
+
+  const canSpend = () => isPlus || creditsLeft > 0;
+
+  const spendCredit = () => {
+    if (isPlus) return;
+    setCredits((c) => {
+      const base = currentCredits(c);
+      return { ...base, used: base.used + 1 };
+    });
+  };
+
+  // Demo rewarded ad: returns false when today's ads are used up
+  const watchAd = () => {
+    if (adsLeft <= 0) return false;
+    setCredits((c) => {
+      const base = currentCredits(c);
+      return { ...base, bonus: base.bonus + AD_REWARD, ads: base.ads + 1 };
+    });
+    return true;
+  };
+
+  const activatePlus = (plan: PlanId) => setPlus({ active: true, plan, since: Date.now() });
+  const cancelPlus = () => setPlus(INACTIVE_PLUS);
 
   // Adds scanned ingredients. Existing ones are merged: a counted amount (e.g. 3 eggs
   // visible in the photo) is added to the stock; an uncounted one leaves the stock as is.
@@ -399,6 +492,18 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
   const toggleCookedDay = (index: number) =>
     setCookedDays((prev) => prev.map((v, i) => (i === index ? !v : v)));
 
+  const saveUserRecipe = (recipe: Recipe) =>
+    setUserRecipes((prev) =>
+      prev.some((r) => r.id === recipe.id)
+        ? prev.map((r) => (r.id === recipe.id ? recipe : r))
+        : [recipe, ...prev]
+    );
+
+  const deleteUserRecipe = (id: string) => {
+    setUserRecipes((prev) => prev.filter((r) => r.id !== id));
+    setFavorites((prev) => prev.filter((x) => x !== id));
+  };
+
   // Applies the stock changes, records the impact, marks today in the streak
   const cookRecipe = (recipeId: string, changes: StockChange[]) => {
     const now = Date.now();
@@ -448,11 +553,14 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
     setFridge([]);
     setFavorites([]);
     setAiRecipes([]);
+    setUserRecipes([]);
     setUsedCount(0);
     setCookedRecipeIds([]);
     setPrefs(DEFAULT_PREFS);
     setImpact(newImpact());
     setProfile(DEFAULT_PROFILE);
+    setCredits(freshCredits());
+    setPlus(INACTIVE_PLUS);
     setCookedDays(new Array<boolean>(7).fill(false));
   };
 
@@ -476,13 +584,25 @@ export function FridgeProvider({ children }: { children: ReactNode }) {
         cookedRecipeIds,
         aiRecipes,
         setAiRecipes,
-        recipes: [...aiRecipes, ...RECIPES],
+        userRecipes,
+        saveUserRecipe,
+        deleteUserRecipe,
+        recipes: [...userRecipes.filter((r) => !r.draft), ...aiRecipes, ...RECIPES],
         prefs,
         setPrefs,
         impact,
         resetImpact,
         profile,
         setProfile,
+        isPlus,
+        plus,
+        creditsLeft,
+        adsLeft,
+        canSpend,
+        spendCredit,
+        watchAd,
+        activatePlus,
+        cancelPlus,
         resetAll,
       }}
     >

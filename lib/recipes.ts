@@ -19,6 +19,8 @@ export type Recipe = {
   sugar: number;
   sodium: number; // mg  sodium:
   cost?: number; // estimated Rp per serving
+  custom?: boolean; // created by the user
+  draft?: boolean; // saved as a draft, not shown in recommendations
   ingredients: RecipeIngredient[];
   steps: string[];
 };

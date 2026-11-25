@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { analyzePhoto, type ScanResult } from '../lib/api';
 import { useFridge } from '../lib/FridgeContext';
 import { findIngredient, formatQty } from '../lib/ingredients';
+import { CreditPill } from '../lib/CreditPill';
+import { openPaywall } from '../lib/PaywallHost';
 
 const WARNINGS: Record<string, string> = {
   screen: 'Foto ini sepertinya layar atau monitor, bukan bahan asli.',
@@ -26,7 +28,7 @@ const WARNINGS: Record<string, string> = {
 export default function CameraScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { addToFridge } = useFridge();
+  const { addToFridge, canSpend, spendCredit } = useFridge();
   const [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -40,11 +42,16 @@ export default function CameraScreen() {
       Alert.alert('Foto gagal dibaca', 'Coba ambil foto lagi.');
       return;
     }
+    if (!canSpend()) {
+      openPaywall();
+      return;
+    }
     setLoading(true);
     try {
       const res = await analyzePhoto(asset.base64);
       setResult(res);
       setSelected(res.ingredients);
+      spendCredit();
     } catch (e) {
       Alert.alert(
         'Gagal menganalisis foto',
@@ -125,6 +132,10 @@ export default function CameraScreen() {
       >
         <Ionicons name="arrow-back" size={36} color="#462b0e" />
       </Pressable>
+
+      <View style={[styles.pillWrap, { top: insets.top + 14 }]}>
+        <CreditPill />
+      </View>
 
       {loading && (
         <View style={styles.loading}>
@@ -227,6 +238,7 @@ const styles = StyleSheet.create({
   },
   hint: { color: '#8a7560', fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
   back: { position: 'absolute', left: 16 },
+  pillWrap: { position: 'absolute', right: 16 },
   loading: {
     position: 'absolute',
     alignSelf: 'center',

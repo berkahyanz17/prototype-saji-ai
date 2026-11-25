@@ -13,6 +13,7 @@ import {
 import { FridgeProvider } from '../lib/FridgeContext';
 import Reminders from '../lib/Reminders';
 import { AlertHost } from '../lib/AlertHost';
+import { PaywallHost } from '../lib/PaywallHost';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -33,7 +34,8 @@ export default function RootLayout() {
   return (
     <FridgeProvider>
       <Reminders />
-      <AlertHost />
+        <AlertHost />
+        <PaywallHost />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="camera" options={{ animation: 'slide_from_bottom' }} />

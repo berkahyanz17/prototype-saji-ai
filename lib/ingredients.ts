@@ -1,6 +1,7 @@
 import { SHELF_LIFE_DAYS, type Category, type Location } from './foodInfo';
 import type { FridgeItem } from './FridgeContext';
 import type { Recipe } from './recipes';
+import { MORE_INGREDIENTS } from './ingredientsMore';
 
 export type Nutrients = {
   kcal: number;
@@ -63,7 +64,7 @@ const ing = (
   },
 });
 
-export const INGREDIENTS: Ingredient[] = [
+const BASE_INGREDIENTS: Ingredient[] = [
   // Protein
   ing('telur', 'telur', ['egg', 'eggs', 'telur ayam', 'telor'], 'Protein', 'kulkas', { kulkas: 21, rak: 7 }, 'butir', 6, { butir: 50 }, [143, 12.6, 0.7, 9.5, 0, 0.4, 142]),
   ing('ayam', 'ayam', ['chicken', 'daging ayam', 'dada ayam', 'paha ayam'], 'Protein', 'kulkas', { kulkas: 2, freezer: 180 }, 'g', 500, { potong: 100 }, [120, 22.5, 0, 2.6, 0, 0, 45]),
@@ -121,6 +122,11 @@ export const INGREDIENTS: Ingredient[] = [
   ing('keju', 'keju', ['cheese', 'cheddar'], 'Produk susu', 'kulkas', { kulkas: 30, freezer: 90 }, 'g', 165, { lembar: 20 }, [403, 24.9, 1.3, 33.1, 0, 0.5, 621]),
   ing('mentega', 'mentega', ['butter', 'margarin', 'margarine'], 'Produk susu', 'kulkas', { kulkas: 90, rak: 5, freezer: 180 }, 'g', 200, { sdm: 14 }, [717, 0.9, 0.1, 81.1, 0, 0.1, 643]),
 ];
+
+export const INGREDIENTS: Ingredient[] = [...BASE_INGREDIENTS, ...MORE_INGREDIENTS];
+
+// Basic kitchen items a recipe can assume are available
+export const STAPLE_IDS = ['garam', 'gula', 'minyak', 'merica'];
 
 const INGREDIENT_BY_ID = new Map(INGREDIENTS.map((i) => [i.id, i]));
 export const ingredientById = (id: string) => INGREDIENT_BY_ID.get(id);
@@ -250,6 +256,7 @@ export type NutritionResult = {
   sugar: number;
   sodium: number;
   fromDb: boolean; // false = fell back to the recipe's own (AI/hand-written) numbers
+  unavailable?: boolean; // custom recipe without enough database matches
   matched: number;
   total: number;
 };
@@ -305,6 +312,7 @@ export function nutritionOf(recipe: Recipe): NutritionResult {
     sugar: recipe.sugar,
     sodium: recipe.sodium,
     fromDb: false,
+    unavailable: !!recipe.custom,
     matched,
     total,
   };

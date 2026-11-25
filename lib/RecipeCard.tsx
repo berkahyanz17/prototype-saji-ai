@@ -1,6 +1,6 @@
 import { View, Text, Pressable, StyleSheet } from './ui';
-import type { Recipe } from './recipes';
 import { nutritionOf } from './ingredients';
+import type { Recipe } from './recipes';
 
 type Props = {
   recipe: Recipe;
@@ -17,8 +17,9 @@ export default function RecipeCard({
   label = 'Rekomendasi terbaik',
   onPress,
 }: Props) {
+  const n = nutritionOf(recipe);
   return (
-    <Pressable style={styles.card} onPress={onPress}>
+    <Pressable style={[styles.card, recipe.draft && styles.draft]} onPress={onPress}>
       <View style={styles.photo}>
         <Text style={styles.emoji}>{recipe.emoji}</Text>
       </View>
@@ -28,7 +29,8 @@ export default function RecipeCard({
           {recipe.name}
         </Text>
         <Text style={styles.meta}>
-          {recipe.minutes} menit · {nutritionOf(recipe).calories} kkal
+          {recipe.minutes > 0 ? `${recipe.minutes} menit` : '– menit'} ·{' '}
+          {n.unavailable ? '– kkal' : `${n.calories} kkal`}
         </Text>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>
@@ -49,6 +51,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     minHeight: 150,
   },
+  draft: { borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#b4541a' },
   photo: {
     width: 120,
     backgroundColor: '#f1dc9a',

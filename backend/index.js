@@ -11,9 +11,19 @@ app.use(express.json({ limit: '15mb' }));
 
 const KEY = process.env.GEMINI_API_KEY;
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const APP_KEY = process.env.APP_KEY; // optional shared secret between the app and this backend
+const PORT = Number(process.env.PORT) || 3000;
 
 console.log('Model:', MODEL);
 console.log('API key loaded:', KEY ? `yes (${KEY.length} chars)` : 'NO - check backend/.env');
+console.log('App key protection:', APP_KEY ? 'ON (x-app-key header required)' : 'OFF');
+
+// If APP_KEY is set, every protected route needs the header "x-app-key: <APP_KEY>"
+function requireKey(req, res, next) {
+  if (!APP_KEY) return next();
+  if (req.get('x-app-key') === APP_KEY) return next();
+  return res.status(401).json({ error: 'Unauthorized' });
+}
 
 async function askGemini(parts, timeoutMs, temperature) {
   const started = Date.now();
@@ -174,9 +184,10 @@ function normalizeRecipes(parsed, ingredientList) {
     .filter(Boolean);
 }
 
+// Health check (public, no key needed)
 app.get('/', (_req, res) => res.send('ok'));
 
-app.get('/models', async (_req, res) => {
+app.get('/models', requireKey, async (_req, res) => {
   try {
     const r = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models?pageSize=100',
@@ -192,7 +203,7 @@ app.get('/models', async (_req, res) => {
   }
 });
 
-app.post('/analyze', async (req, res) => {
+app.post('/analyze', requireKey, async (req, res) => {
   try {
     const { imageBase64, mimeType = 'image/jpeg' } = req.body;
     if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
@@ -229,7 +240,7 @@ app.post('/analyze', async (req, res) => {
   }
 });
 
-app.post('/recipes', async (req, res) => {
+app.post('/recipes', requireKey, async (req, res) => {
   try {
     const raw = Array.isArray(req.body?.ingredients) ? req.body.ingredients : [];
     const ingredients = raw.map((s) => String(s).trim()).filter(Boolean).slice(0, 30);
@@ -267,4 +278,4 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message });
 });
 
-app.listen(3000, '0.0.0.0', () => console.log('Server running on port 3000'));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

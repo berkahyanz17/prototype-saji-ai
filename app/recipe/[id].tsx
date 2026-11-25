@@ -3,9 +3,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge } from '../../lib/FridgeContext';
-import { getRecipe, matchRecipe } from '../../lib/recipes';
-import { formatRp } from '../../lib/prefs';
 import { nutritionOf } from '../../lib/ingredients';
+import { formatRp } from '../../lib/prefs';
+import { getRecipe, matchRecipe } from '../../lib/recipes';
 
 export default function RecipeDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,6 +29,7 @@ export default function RecipeDetail() {
     recipe,
     fridge.map((i) => i.name)
   );
+  const n = nutritionOf(recipe);
   const isFav = favorites.includes(recipe.id);
   const missing = items.filter((i) => !i.ready).map((i) => i.ingredient.name);
 
@@ -46,17 +47,30 @@ export default function RecipeDetail() {
             <Ionicons name="arrow-back" size={34} color="#462b0e" />
           </Pressable>
           <Text style={styles.topTitle}>Resep</Text>
-          <Pressable
-            style={styles.heart}
-            onPress={() => toggleFavorite(recipe.id)}
-            hitSlop={10}
-          >
-            <Ionicons
-              name={isFav ? 'heart' : 'heart-outline'}
-              size={24}
-              color="#462b0e"
-            />
-          </Pressable>
+          <View style={styles.actions}>
+            {recipe.custom && (
+              <Pressable
+                style={styles.roundButton}
+                onPress={() =>
+                  router.push({ pathname: '/recipe-editor', params: { id: recipe.id } })
+                }
+                hitSlop={10}
+              >
+                <Ionicons name="create-outline" size={22} color="#462b0e" />
+              </Pressable>
+            )}
+            <Pressable
+              style={styles.roundButton}
+              onPress={() => toggleFavorite(recipe.id)}
+              hitSlop={10}
+            >
+              <Ionicons
+                name={isFav ? 'heart' : 'heart-outline'}
+                size={24}
+                color="#462b0e"
+              />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.hero}>
@@ -79,14 +93,18 @@ export default function RecipeDetail() {
             <Ionicons name="time-outline" size={22} color="#20392e" />
             <Text style={styles.statText}>{recipe.minutes} mnt</Text>
           </View>
-          <Text style={styles.statText}>{nutritionOf(recipe).calories} kkal</Text>
-          <Text style={styles.statText}>{nutritionOf(recipe).protein} g protein</Text>
+          <Text style={styles.statText}>{n.unavailable ? '– kkal' : `${n.calories} kkal`}</Text>
+          <Text style={styles.statText}>
+            {n.unavailable ? '– protein' : `${n.protein} g protein`}
+          </Text>
         </View>
+
         {recipe.cost ? (
           <Text style={styles.cost}>
             Perkiraan biaya ± Rp{formatRp(recipe.cost)} per porsi
           </Text>
         ) : null}
+
         <View style={styles.sectionRow}>
           <View>
             <Text style={styles.section}>Bahan yang dibutuhkan</Text>
@@ -146,7 +164,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   topTitle: { fontSize: 22, fontWeight: '700', color: '#462b0e' },
-  heart: {
+  actions: { flexDirection: 'row', gap: 8 },
+  roundButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -182,6 +201,7 @@ const styles = StyleSheet.create({
   },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statText: { fontSize: 13, fontWeight: '500', color: '#20392e' },
+  cost: { fontSize: 12, color: '#605c5a', marginTop: -10, marginBottom: 14 },
   sectionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -213,7 +233,6 @@ const styles = StyleSheet.create({
   ingName: { fontSize: 14, fontWeight: '600', color: '#462b0e' },
   ingAmount: { fontSize: 11, color: '#605c5a' },
   missing: { fontSize: 13, color: '#b4541a', marginTop: 16 },
-  cost: { fontSize: 12, color: '#605c5a', marginTop: -10, marginBottom: 14 },
   bottom: { paddingHorizontal: 16, paddingTop: 8, backgroundColor: '#fff7eb' },
   cookButton: {
     flexDirection: 'row',
