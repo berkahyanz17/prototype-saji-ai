@@ -14,6 +14,7 @@ import { FridgeProvider } from '../lib/FridgeContext';
 import Reminders from '../lib/Reminders';
 import { AlertHost } from '../lib/AlertHost';
 import { PaywallHost } from '../lib/PaywallHost';
+import { CosmeticsProvider } from '../lib/CosmeticsContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -33,6 +34,7 @@ export default function RootLayout() {
 
   return (
     <FridgeProvider>
+      <CosmeticsProvider>
       <Reminders />
         <AlertHost />
         <PaywallHost />
@@ -43,6 +45,7 @@ export default function RootLayout() {
         <Stack.Screen name="nutrition/[id]" />
       </Stack>
       <StatusBar style="dark" />
+      </CosmeticsProvider>
     </FridgeProvider>
   );
 }

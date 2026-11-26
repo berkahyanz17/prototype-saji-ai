@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge, type FridgeItem } from '../../lib/FridgeContext';
 import { emojiFor, expiryStatus, type Location, type Tone } from '../../lib/foodInfo';
 import { UNIT_OPTIONS, formatQty } from '../../lib/ingredients';
+import { AppMascot } from '../../lib/AppMascot';
 
 const TONE_COLORS: Record<Tone, string> = {
   urgent: '#b4541a',
@@ -196,7 +197,10 @@ export default function FridgeScreen() {
         ListEmptyComponent={
           fridge.length === 0 ? (
             <View>
-              <Text style={styles.empty}>Lemarimu masih kosong.</Text>
+              <View style={styles.emptyWrap}>
+                <AppMascot mood="biasa" size={110} />
+                <Text style={styles.empty}>Lemarimu masih kosong.</Text>
+              </View>
               <Pressable style={styles.scanButton} onPress={() => router.push('/camera')}>
                 <Text style={styles.scanText}>Scan bahan</Text>
               </Pressable>
@@ -339,6 +343,7 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 16 },
   empty: { textAlign: 'center', color: '#8a7a68', marginTop: 24, marginBottom: 16 },
+    emptyWrap: { alignItems: 'center', marginTop: 12 },
   scanButton: {
     backgroundColor: '#8a5a2b',
     padding: 14,

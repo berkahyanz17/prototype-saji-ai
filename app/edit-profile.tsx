@@ -4,21 +4,42 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFridge } from '../lib/FridgeContext';
+import { useCosmetics } from '../lib/CosmeticsContext';
+import { effectiveCosmetics } from '../lib/cosmetics';
 import { AVATARS, Avatar } from '../lib/avatars';
+import { deletePhoto, pickPhoto, takePhoto } from '../lib/photos';
 
 export default function EditProfile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, setProfile } = useFridge();
+  const { profile, setProfile, isPlus } = useFridge();
+  const { cosmetics, profilePhoto, setProfilePhoto } = useCosmetics();
+  const look = effectiveCosmetics(cosmetics, isPlus);
+
   const [name, setName] = useState(profile.name);
   const [avatar, setAvatar] = useState(profile.avatar);
+  const [photo, setPhoto] = useState<string | undefined>(profilePhoto);
 
-  const save = () => {
+  const change = async (picker: () => Promise<string | null>) => {
+    const uri = await picker();
+    if (!uri) return;
+    if (photo && photo !== profilePhoto) await deletePhoto(photo);
+    setPhoto(uri);
+  };
+
+  const clear = async () => {
+    if (photo && photo !== profilePhoto) await deletePhoto(photo);
+    setPhoto(undefined);
+  };
+
+  const save = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       Alert.alert('Nama kosong', 'Isi namamu dulu.');
       return;
     }
+    if (profilePhoto && profilePhoto !== photo) await deletePhoto(profilePhoto);
+    setProfilePhoto(photo);
     setProfile({ name: trimmed.slice(0, 24), avatar });
     router.back();
   };
@@ -41,10 +62,27 @@ export default function EditProfile() {
         </View>
 
         <View style={styles.preview}>
-          <Avatar id={avatar} size={96} />
+          <Avatar id={avatar} size={96} rings={look.frame.rings} photo={photo} />
         </View>
 
-        <Text style={styles.label}>Pilih avatar</Text>
+        <View style={styles.photoRow}>
+          <Pressable style={styles.photoBtn} onPress={() => change(() => pickPhoto([1, 1]))}>
+            <Ionicons name="image-outline" size={18} color="#462b0e" />
+            <Text style={styles.photoText}>Galeri</Text>
+          </Pressable>
+          <Pressable style={styles.photoBtn} onPress={() => change(() => takePhoto([1, 1]))}>
+            <Ionicons name="camera-outline" size={18} color="#462b0e" />
+            <Text style={styles.photoText}>Kamera</Text>
+          </Pressable>
+          {photo ? (
+            <Pressable style={styles.photoBtn} onPress={clear}>
+              <Ionicons name="trash-outline" size={18} color="#b91c1c" />
+              <Text style={[styles.photoText, styles.photoDelete]}>Hapus foto</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        <Text style={styles.label}>Atau pilih avatar</Text>
         <View style={styles.grid}>
           {AVATARS.map((a) => (
             <Pressable
@@ -82,8 +120,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff7eb' },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 8 },
   title: { fontSize: 24, fontWeight: '700', color: '#462b0e' },
-  preview: { alignItems: 'center', marginVertical: 18 },
-  label: { fontSize: 15, fontWeight: '700', color: '#462b0e', marginTop: 12, marginBottom: 10 },
+  preview: { alignItems: 'center', marginTop: 18, marginBottom: 14 },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  photoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#462b0e',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  photoText: { fontSize: 14, fontWeight: '600', color: '#462b0e' },
+  photoDelete: { color: '#b91c1c' },
+  label: { fontSize: 15, fontWeight: '700', color: '#462b0e', marginTop: 18, marginBottom: 10 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   avatarBox: { padding: 4, borderRadius: 22, borderWidth: 2, borderColor: 'transparent' },
   avatarActive: { borderColor: '#462b0e' },

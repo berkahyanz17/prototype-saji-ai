@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 
 export const AVATARS = [
   { id: 'telur', emoji: '🥚', bg: '#fbefc8' },
@@ -13,20 +13,51 @@ export const AVATARS = [
 
 export const DEFAULT_AVATAR = 'telur';
 
-export function Avatar({ id, size = 64 }: { id: string; size?: number }) {
+export function Avatar({
+  id,
+  size = 64,
+  rings = [],
+  photo,
+}: {
+  id: string;
+  size?: number;
+  rings?: string[]; // frame colors, outside to inside
+  photo?: string;
+}) {
   const a = AVATARS.find((x) => x.id === id) ?? AVATARS[0];
-  return (
+  const radius = size * 0.3;
+
+  let node = (
     <View
       style={{
         width: size,
         height: size,
-        borderRadius: size * 0.3,
+        borderRadius: radius,
         backgroundColor: a.bg,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
       }}
     >
-      <Text style={{ fontSize: size * 0.5 }}>{a.emoji}</Text>
+      {photo ? (
+        <Image source={{ uri: photo }} style={{ width: size, height: size }} />
+      ) : (
+        <Text style={{ fontSize: size * 0.5 }}>{a.emoji}</Text>
+      )}
     </View>
   );
+
+  let r = radius;
+  for (let i = rings.length - 1; i >= 0; i--) {
+    r += 5;
+    node = (
+      <View
+        key={i}
+        style={{ borderWidth: 3, borderColor: rings[i], borderRadius: r, padding: 2 }}
+      >
+        {node}
+      </View>
+    );
+  }
+  return node;
 }

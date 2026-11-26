@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert as NativeAlert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppMascot } from './AppMascot';
+import type { MascotMood } from './Mascot';
 
 export type AlertButton = {
   text?: string;
@@ -7,17 +9,19 @@ export type AlertButton = {
   style?: 'default' | 'cancel' | 'destructive';
 };
 
-type Spec = { title: string; message?: string; buttons: AlertButton[] };
+type Options = { mascot?: MascotMood };
+type Spec = { title: string; message?: string; buttons: AlertButton[]; options?: Options };
 
 let listener: ((spec: Spec) => void) | null = null;
 
-// Same call shape as React Native's Alert.alert, but shows the themed dialog
+// Same call shape as React Native's Alert.alert, plus an optional { mascot } 4th argument
 export const Alert = {
-  alert(title: string, message?: string, buttons?: AlertButton[]) {
+  alert(title: string, message?: string, buttons?: AlertButton[], options?: Options) {
     const spec: Spec = {
       title,
       message,
       buttons: buttons && buttons.length > 0 ? buttons : [{ text: 'OK' }],
+      options,
     };
     if (listener) listener(spec);
     else NativeAlert.alert(title, message, buttons);
@@ -44,6 +48,7 @@ export function AlertHost() {
 
   const cancelButton = current.buttons.find((b) => b.style === 'cancel');
   const stacked = current.buttons.length > 2;
+  const mood = current.options?.mascot;
 
   return (
     <Modal
@@ -57,8 +62,15 @@ export function AlertHost() {
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <Text style={styles.title}>{current.title}</Text>
-          {current.message ? <Text style={styles.message}>{current.message}</Text> : null}
+          {mood ? (
+            <View style={styles.mascot}>
+              <AppMascot mood={mood} size={96} />
+            </View>
+          ) : null}
+          <Text style={[styles.title, mood && styles.centered]}>{current.title}</Text>
+          {current.message ? (
+            <Text style={[styles.message, mood && styles.centered]}>{current.message}</Text>
+          ) : null}
           <View style={[styles.buttons, stacked && styles.buttonsStacked]}>
             {current.buttons.map((b, i) => {
               const kind = b.style ?? 'default';
@@ -99,6 +111,8 @@ const styles = StyleSheet.create({
     padding: 20,
     elevation: 8,
   },
+  mascot: { alignItems: 'center', marginTop: -4, marginBottom: 6 },
+  centered: { textAlign: 'center' },
   title: { fontFamily: 'JosefinSans_700Bold', fontSize: 20, color: '#462b0e' },
   message: {
     fontFamily: 'JosefinSans_500Medium',

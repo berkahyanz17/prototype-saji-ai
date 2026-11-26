@@ -1,0 +1,6 @@
+tunnel: 009eba5a-4608-4554-a583-a0c8a4ebe491
+credentials-file: /etc/cloudflared/009eba5a-4608-4554-a583-a0c8a4ebe491.json
+ingress:
+  - hostname: api.healthsync.biz.id
+    service: http://api:3000
+  - service: http_status:404

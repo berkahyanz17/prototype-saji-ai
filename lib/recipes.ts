@@ -21,6 +21,7 @@ export type Recipe = {
   cost?: number; // estimated Rp per serving
   custom?: boolean; // created by the user
   draft?: boolean; // saved as a draft, not shown in recommendations
+  photo?: string; // local photo of the dish (own recipes)
   ingredients: RecipeIngredient[];
   steps: string[];
 };

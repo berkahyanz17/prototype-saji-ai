@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert } from '../lib/ui';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Image } from '../lib/ui';
 import { Modal } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,7 @@ import {
   type Ingredient,
 } from '../lib/ingredients';
 import type { Recipe, RecipeIngredient } from '../lib/recipes';
+import { deletePhoto, pickPhoto, takePhoto } from '../lib/photos';
 
 type IngRow = { key: string; name: string; qty: string; unit: string };
 type StepRow = { key: string; text: string };
@@ -108,13 +109,29 @@ export default function RecipeEditor() {
   const [servings, setServings] = useState(init.servings);
   const [ings, setIngs] = useState<IngRow[]>(init.ings);
   const [steps, setSteps] = useState<StepRow[]>(init.steps);
+  const [photo, setPhoto] = useState<string | undefined>(existing?.photo);
+
+  const changePhoto = async (picker: () => Promise<string | null>) => {
+    const uri = await picker();
+    if (!uri) return;
+    if (photo && photo !== existing?.photo) await deletePhoto(photo);
+    setPhoto(uri);
+  };
+
+  const clearPhoto = async () => {
+    if (photo && photo !== existing?.photo) await deletePhoto(photo);
+    setPhoto(undefined);
+  };
+
   const [focused, setFocused] = useState<number | null>(null);
   const [unitFor, setUnitFor] = useState<number | null>(null);
 
   const [initialSnap] = useState(() =>
     snapshotOf(init.emoji, init.name, init.minutes, init.servings, init.ings, init.steps)
   );
-  const dirty = snapshotOf(emoji, name, minutes, servings, ings, steps) !== initialSnap;
+  const dirty =
+    snapshotOf(emoji, name, minutes, servings, ings, steps) !== initialSnap ||
+    photo !== existing?.photo;
 
   const doneRef = useRef(false);
   const dirtyRef = useRef(false);
@@ -200,6 +217,7 @@ export default function RecipeEditor() {
       steps: stepTexts,
       custom: true,
       draft: asDraft,
+      photo,
     };
 
     saveUserRecipe(recipe);
@@ -254,6 +272,7 @@ export default function RecipeEditor() {
         onPress: () => {
           doneRef.current = true;
           deleteUserRecipe(existing.id);
+          deletePhoto(existing.photo);
           router.navigate('/recipes');
         },
       },
@@ -297,15 +316,32 @@ export default function RecipeEditor() {
           ))}
         </View>
 
+      <Text style={styles.label}>Foto masakan (opsional)</Text>
+        {photo ? <Image source={{ uri: photo }} style={styles.photo} /> : null}
+        <View style={styles.photoRow}>
+          <Pressable
+            style={styles.photoBtn}
+            onPress={() => changePhoto(() => pickPhoto([4, 3]))}
+          >
+            <Ionicons name="image-outline" size={18} color="#462b0e" />
+            <Text style={styles.photoText}>Galeri</Text>
+          </Pressable>
+          <Pressable
+            style={styles.photoBtn}
+            onPress={() => changePhoto(() => takePhoto([4, 3]))}
+          >
+            <Ionicons name="camera-outline" size={18} color="#462b0e" />
+            <Text style={styles.photoText}>Kamera</Text>
+          </Pressable>
+          {photo ? (
+            <Pressable style={styles.photoBtn} onPress={clearPhoto}>
+              <Ionicons name="trash-outline" size={18} color="#b91c1c" />
+              <Text style={[styles.photoText, styles.photoDelete]}>Hapus</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
         <Text style={styles.label}>Nama resep</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Contoh: Nasi goreng telur"
-          placeholderTextColor="#9a8c7c"
-          maxLength={60}
-        />
 
         <View style={styles.twoCols}>
           <View style={styles.col}>
@@ -508,6 +544,20 @@ const styles = StyleSheet.create({
   },
   emojiActive: { borderColor: '#462b0e', backgroundColor: '#fbefc8' },
   emojiText: { fontSize: 24 },
+  photo: { width: '100%', height: 180, borderRadius: 16, marginBottom: 8 },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#462b0e',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  photoText: { fontSize: 13, fontWeight: '600', color: '#462b0e' },
+  photoDelete: { color: '#b91c1c' },
   input: {
     backgroundColor: '#fffaf3',
     borderWidth: 1,

@@ -1,4 +1,4 @@
-import { View, Text, Pressable, StyleSheet } from './ui';
+import { View, Text, Pressable, Image, StyleSheet } from './ui';
 import { nutritionOf } from './ingredients';
 import type { Recipe } from './recipes';
 
@@ -21,7 +21,11 @@ export default function RecipeCard({
   return (
     <Pressable style={[styles.card, recipe.draft && styles.draft]} onPress={onPress}>
       <View style={styles.photo}>
-        <Text style={styles.emoji}>{recipe.emoji}</Text>
+        {recipe.photo ? (
+          <Image source={{ uri: recipe.photo }} style={styles.image} />
+        ) : (
+          <Text style={styles.emoji}>{recipe.emoji}</Text>
+        )}
       </View>
       <View style={styles.info}>
         <Text style={styles.label}>{label}</Text>
@@ -58,6 +62,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  image: { width: '100%', height: '100%' },
   emoji: { fontSize: 60 },
   info: { flex: 1, padding: 12, justifyContent: 'center' },
   label: { fontSize: 11, fontWeight: '600', color: '#462b0ecc' },

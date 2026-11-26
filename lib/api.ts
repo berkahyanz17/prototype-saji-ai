@@ -16,43 +16,55 @@ export type ScanResult = {
   dishes: Dish[];
 };
 
-// Set in myapp/.env (project root), e.g.
-// EXPO_PUBLIC_API_URL=https://something-random.trycloudflare.com
-// EXPO_PUBLIC_APP_KEY=same value as APP_KEY in backend/.env
-const SERVER_URL = process.env.EXPO_PUBLIC_API_URL;
-const APP_KEY = process.env.EXPO_PUBLIC_APP_KEY ?? '';
+const SERVER_URL = 'https://api.healthsync.biz.id';
+// Must match APP_TOKEN in backend/.env. It deters casual abuse, but anyone can extract it from the app.
+const APP_TOKEN = '3705f85fb743718966d2505bb06e95fdb71141204a4d1fae';
 
-async function post(path: string, body: unknown, timeoutMs: number): Promise<Response> {
-  if (!SERVER_URL) throw new Error('EXPO_PUBLIC_API_URL is not set');
+const headers = {
+  'Content-Type': 'application/json',
+  'x-app-token': APP_TOKEN,
+};
+
+export async function analyzePhoto(imageBase64: string): Promise<ScanResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), 60000);
   try {
-    return await fetch(`${SERVER_URL.replace(/\/$/, '')}${path}`, {
+    const res = await fetch(`${SERVER_URL}/analyze`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-app-key': APP_KEY },
-      body: JSON.stringify(body),
+      headers,
+      body: JSON.stringify({ imageBase64, mimeType: 'image/jpeg' }),
       signal: controller.signal,
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.error ?? `Server error ${res.status}`);
+    }
+    return (await res.json()) as ScanResult;
   } finally {
     clearTimeout(timer);
   }
-}
-
-export async function analyzePhoto(imageBase64: string): Promise<ScanResult> {
-  const res = await post('/analyze', { imageBase64, mimeType: 'image/jpeg' }, 60000);
-  if (!res.ok) throw new Error(`Server error ${res.status}`);
-  return (await res.json()) as ScanResult;
 }
 
 export async function generateRecipes(
   ingredients: string[],
   prefs?: Prefs
 ): Promise<Recipe[]> {
-  const res = await post('/recipes', { ingredients, prefs }, 90000);
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `Server error ${res.status}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const res = await fetch(`${SERVER_URL}/recipes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ingredients, prefs }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.error ?? `Server error ${res.status}`);
+    }
+    const data = await res.json();
+    return (data.recipes ?? []) as Recipe[];
+  } finally {
+    clearTimeout(timer);
   }
-  const data = await res.json();
-  return (data.recipes ?? []) as Recipe[];
 }

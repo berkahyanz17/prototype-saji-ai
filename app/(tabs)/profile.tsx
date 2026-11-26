@@ -6,6 +6,8 @@ import { useFridge } from '../../lib/FridgeContext';
 import { Avatar } from '../../lib/avatars';
 import { formatMass, wasteRate } from '../../lib/impact';
 import { budgetLabel, equipmentLabel, reminderLabel, timeLabel } from '../../lib/prefs';
+import { effectiveCosmetics } from '../../lib/cosmetics';
+import { useCosmetics } from '../../lib/CosmeticsContext';
 
 const HELP = [
   { label: 'Pusat Bantuan', page: 'help' },
@@ -31,6 +33,8 @@ export default function ProfileScreen() {
 
   const streak = cookedDays.filter(Boolean).length;
   const rate = wasteRate(impact);
+  const { cosmetics, profilePhoto } = useCosmetics();
+  const look = effectiveCosmetics(cosmetics, isPlus);
 
   const stats = [
     { icon: 'leaf-outline', value: usedCount, label: 'Bahan terpakai' },
@@ -63,8 +67,16 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
 
-      <Pressable style={styles.profileCard} onPress={() => router.push('/edit-profile')}>
-        <Avatar id={profile.avatar} size={84} />
+      <Pressable
+        style={[styles.profileCard, { backgroundColor: look.background.color }]}
+        onPress={() => router.push('/edit-profile')}
+      >
+        <Avatar
+          id={profile.avatar}
+          size={84}
+          rings={look.frame.rings}
+          photo={profilePhoto}
+        />
         <View style={styles.profileInfo}>
           <Text style={styles.name}>{profile.name}</Text>
           <View style={styles.pills}>
@@ -91,7 +103,7 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.shortcutLabel}>Toko</Text>
         </Pressable>
-        <Pressable style={styles.shortcut} onPress={soon}>
+        <Pressable style={styles.shortcut} onPress={() => router.push('/customize')}>
           <View style={styles.shortcutBox}>
             <Ionicons name="color-palette-outline" size={26} color="#462b0e" />
           </View>

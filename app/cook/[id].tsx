@@ -58,7 +58,9 @@ export default function CookScreen() {
           onPress: () => {
             cookRecipe(recipe.id, changes);
             router.navigate('/');
-            Alert.alert('Selamat makan! 🍽️', 'Streak masak hari ini sudah tercatat.');
+            Alert.alert('Selamat makan!', 'Streak masak hari ini sudah tercatat.', undefined, {
+              mascot: 'senang',
+            });
           },
         },
       ]

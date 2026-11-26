@@ -11,7 +11,8 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFridge } from '../../lib/FridgeContext';
+import { todayIndex, useFridge } from '../../lib/FridgeContext';
+import { AppMascot } from '../../lib/AppMascot';
 import { DAY_MS, emojiFor } from '../../lib/foodInfo';
 import { rankRecipes } from '../../lib/recipes';
 import RecipeCard from '../../lib/RecipeCard';
@@ -71,9 +72,15 @@ export default function Beranda() {
         </View>
       </View>
 
-      <Text style={styles.greeting}>
-        Selamat {greeting}, {profile.name}
-      </Text>
+      <View style={styles.greetingRow}>
+        <Text style={[styles.greeting, styles.greetingText]}>
+          Selamat {greeting}, {profile.name}
+        </Text>
+        <AppMascot
+          size={84}
+          mood={expiringCount > 0 ? 'cemas' : cookedDays[todayIndex()] ? 'senang' : 'biasa'}
+        />
+      </View>
 
       <View style={styles.summaryRow}>
         <View style={styles.streakCard}>
@@ -179,6 +186,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   greeting: { fontSize: 24, fontWeight: '700', color: '#462b0d', marginVertical: 18 },
+    greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    greetingText: { flex: 1 },
   summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
   streakCard: {
     flex: 190,

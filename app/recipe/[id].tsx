@@ -1,4 +1,4 @@
-import { View, Text, Pressable, ScrollView, StyleSheet } from '../../lib/ui';
+import { View, Text, Pressable, ScrollView, StyleSheet, Image } from '../../lib/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,9 +73,13 @@ export default function RecipeDetail() {
           </View>
         </View>
 
-        <View style={styles.hero}>
-          <Text style={styles.heroEmoji}>{recipe.emoji}</Text>
-        </View>
+        {recipe.photo ? (
+          <Image source={{ uri: recipe.photo }} style={styles.heroImage} />
+        ) : (
+          <View style={styles.hero}>
+            <Text style={styles.heroEmoji}>{recipe.emoji}</Text>
+          </View>
+        )}
 
         <View style={styles.nameRow}>
           <Text style={styles.name}>{recipe.name}</Text>
@@ -181,6 +185,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroEmoji: { fontSize: 84 },
+  heroImage: { width: '100%', height: 190, borderRadius: 20 },
   nameRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
