@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Image } from '../lib/ui';
-import { Modal } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Alert,
+  Image,
+} from '../lib/ui';
+import { KeyboardAvoidingView, Modal } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -88,7 +97,9 @@ function toIngredient(row: IngRow): RecipeIngredient {
   const db = findIngredient(name.toLowerCase());
   const qty = Number(row.qty.replace(',', '.'));
   const amount = qty > 0 ? `${Math.round(qty * 100) / 100} ${row.unit}` : 'secukupnya';
-  const keywords = Array.from(new Set([name.toLowerCase(), ...(db ? [db.name.toLowerCase()] : [])]));
+  const keywords = Array.from(
+    new Set([name.toLowerCase(), ...(db ? [db.name.toLowerCase()] : [])])
+  );
   return { name, amount, keywords, staple: db ? STAPLE_IDS.includes(db.id) : false };
 }
 
@@ -110,19 +121,6 @@ export default function RecipeEditor() {
   const [ings, setIngs] = useState<IngRow[]>(init.ings);
   const [steps, setSteps] = useState<StepRow[]>(init.steps);
   const [photo, setPhoto] = useState<string | undefined>(existing?.photo);
-
-  const changePhoto = async (picker: () => Promise<string | null>) => {
-    const uri = await picker();
-    if (!uri) return;
-    if (photo && photo !== existing?.photo) await deletePhoto(photo);
-    setPhoto(uri);
-  };
-
-  const clearPhoto = async () => {
-    if (photo && photo !== existing?.photo) await deletePhoto(photo);
-    setPhoto(undefined);
-  };
-
   const [focused, setFocused] = useState<number | null>(null);
   const [unitFor, setUnitFor] = useState<number | null>(null);
 
@@ -136,6 +134,30 @@ export default function RecipeEditor() {
   const doneRef = useRef(false);
   const dirtyRef = useRef(false);
   const saveRef = useRef<(asDraft: boolean) => void>(() => {});
+
+  // Scrolls the field you tapped above the keyboard
+  const scrollRef = useRef<ScrollView>(null);
+  const rowY = useRef<Record<string, number>>({});
+  const reveal = (key: string) => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, (rowY.current[key] ?? 0) - 140),
+        animated: true,
+      });
+    }, 300);
+  };
+
+  const changePhoto = async (picker: () => Promise<string | null>) => {
+    const uri = await picker();
+    if (!uri) return;
+    if (photo && photo !== existing?.photo) await deletePhoto(photo);
+    setPhoto(uri);
+  };
+
+  const clearPhoto = async () => {
+    if (photo && photo !== existing?.photo) await deletePhoto(photo);
+    setPhoto(undefined);
+  };
 
   const updateIng = (index: number, patch: Partial<IngRow>) =>
     setIngs((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -280,8 +302,9 @@ export default function RecipeEditor() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior="padding">
       <ScrollView
+        ref={scrollRef}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingTop: insets.top + 12,
@@ -316,20 +339,14 @@ export default function RecipeEditor() {
           ))}
         </View>
 
-      <Text style={styles.label}>Foto masakan (opsional)</Text>
+        <Text style={styles.label}>Foto masakan (opsional)</Text>
         {photo ? <Image source={{ uri: photo }} style={styles.photo} /> : null}
         <View style={styles.photoRow}>
-          <Pressable
-            style={styles.photoBtn}
-            onPress={() => changePhoto(() => pickPhoto([4, 3]))}
-          >
+          <Pressable style={styles.photoBtn} onPress={() => changePhoto(() => pickPhoto([4, 3]))}>
             <Ionicons name="image-outline" size={18} color="#462b0e" />
             <Text style={styles.photoText}>Galeri</Text>
           </Pressable>
-          <Pressable
-            style={styles.photoBtn}
-            onPress={() => changePhoto(() => takePhoto([4, 3]))}
-          >
+          <Pressable style={styles.photoBtn} onPress={() => changePhoto(() => takePhoto([4, 3]))}>
             <Ionicons name="camera-outline" size={18} color="#462b0e" />
             <Text style={styles.photoText}>Kamera</Text>
           </Pressable>
@@ -342,6 +359,14 @@ export default function RecipeEditor() {
         </View>
 
         <Text style={styles.label}>Nama resep</Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="Contoh: Nasi goreng telur"
+          placeholderTextColor="#9a8c7c"
+          maxLength={60}
+        />
 
         <View style={styles.twoCols}>
           <View style={styles.col}>
@@ -378,13 +403,22 @@ export default function RecipeEditor() {
           const unknown =
             focused !== index && row.name.trim() !== '' && !findIngredient(row.name.toLowerCase());
           return (
-            <View key={row.key} style={styles.ingBlock}>
+            <View
+              key={row.key}
+              style={styles.ingBlock}
+              onLayout={(e) => {
+                rowY.current[row.key] = e.nativeEvent.layout.y;
+              }}
+            >
               <View style={styles.ingRow}>
                 <TextInput
                   style={[styles.input, styles.ingName]}
                   value={row.name}
                   onChangeText={(t) => updateIng(index, { name: t })}
-                  onFocus={() => setFocused(index)}
+                  onFocus={() => {
+                    setFocused(index);
+                    reveal(row.key);
+                  }}
                   placeholder="Nama bahan"
                   placeholderTextColor="#9a8c7c"
                 />
@@ -392,7 +426,10 @@ export default function RecipeEditor() {
                   style={[styles.input, styles.ingQty]}
                   value={row.qty}
                   onChangeText={(t) => updateIng(index, { qty: t })}
-                  onFocus={() => setFocused(null)}
+                  onFocus={() => {
+                    setFocused(null);
+                    reveal(row.key);
+                  }}
                   placeholder="0"
                   placeholderTextColor="#9a8c7c"
                   keyboardType="decimal-pad"
@@ -431,7 +468,13 @@ export default function RecipeEditor() {
 
         <Text style={styles.label}>Langkah-langkah</Text>
         {steps.map((s, index) => (
-          <View key={s.key} style={styles.stepRow}>
+          <View
+            key={s.key}
+            style={styles.stepRow}
+            onLayout={(e) => {
+              rowY.current[s.key] = e.nativeEvent.layout.y;
+            }}
+          >
             <View style={styles.stepNumber}>
               <Text style={styles.stepNumberText}>{index + 1}</Text>
             </View>
@@ -439,6 +482,7 @@ export default function RecipeEditor() {
               style={[styles.input, styles.stepInput]}
               value={s.text}
               onChangeText={(t) => updateStep(index, t)}
+              onFocus={() => reveal(s.key)}
               placeholder="Tulis langkah..."
               placeholderTextColor="#9a8c7c"
               multiline
@@ -515,7 +559,7 @@ export default function RecipeEditor() {
           </View>
         </Pressable>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

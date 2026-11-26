@@ -103,7 +103,7 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.shortcutLabel}>Toko</Text>
         </Pressable>
-        <Pressable style={styles.shortcut} onPress={() => router.push('/customize')}>
+        <Pressable style={styles.shortcut} onPress={() => router.push('/costumize')}>
           <View style={styles.shortcutBox}>
             <Ionicons name="color-palette-outline" size={26} color="#462b0e" />
           </View>

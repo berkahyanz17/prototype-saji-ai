@@ -1,7 +1,6 @@
 {
   "expo": {
     "name": "Saji AI",
-    "slug": "myapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -12,6 +11,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.sajiai.app",
       "adaptiveIcon": {
         "backgroundColor": "#462b0e",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -26,27 +26,33 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-    "expo-router",
-    [
-      "expo-splash-screen",
-      {
-        "image": "./assets/images/splash-icon.png",
-        "imageWidth": 200,
-        "resizeMode": "contain",
-        "backgroundColor": "#fff7eb"
-      }
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#fff7eb"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#462b0e"
+        }
+      ]
     ],
-    [
-      "expo-notifications",
-      {
-        "icon": "./assets/images/notification-icon.png",
-        "color": "#462b0e"
-      }
-    ]
-  ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "44f59deb-c139-4ef1-bd83-83814fd9271d"
+      }
     }
   }
 }
